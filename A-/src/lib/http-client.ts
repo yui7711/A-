@@ -9,7 +9,7 @@ export async function requestJSON<T>(url:string,init:RequestInit={},options:{tim
   init.signal?.addEventListener('abort',abort,{once:true});
   const timer=setTimeout(abort,options.timeoutMs??25000);
   try{
-   const r=await fetch(url,{...init,credentials:'same-origin',cache:'no-store',signal:controller.signal});
+   const r=await fetch(url,{...init,credentials:init.credentials??'same-origin',cache:'no-store',signal:controller.signal});
    if(r.status===401||r.status===403)throw Object.assign(new Error('登录状态或访问权限需要更新，请重新打开网站后重试。'),{status:r.status});
    if(!r.headers.get('content-type')?.includes('application/json'))throw Object.assign(new Error(`行情服务暂时不可用（HTTP ${r.status}），请稍后刷新。`),{status:r.ok?502:r.status});
    const data=await r.json() as T & {error?:string};

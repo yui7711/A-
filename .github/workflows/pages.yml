@@ -4,6 +4,9 @@ on:
     branches: [main, master]
     paths: ['A-/**', '.github/workflows/pages.yml']
   workflow_dispatch:
+  schedule:
+    # UTC 01:00–07:59 = Shanghai 09:00–15:59, weekdays. GitHub may delay scheduled runs.
+    - cron: '*/5 1-7 * * 1-5'
 permissions:
   contents: read
   pages: write
@@ -27,6 +30,8 @@ jobs:
         working-directory: A-
       - run: npm run collect
         working-directory: A-
+        env:
+          FUYAO_API_KEY: ${{ secrets.FUYAO_API_KEY }}
       - run: npm run build
         working-directory: A-
       - uses: actions/configure-pages@v5

@@ -2,6 +2,7 @@ import type {History,Market} from './market-types';
 import {requestJSON as httpJSON,fetchSectorFallback} from './http-client';
 import {createPublicDataClient} from './public-data';
 import {fetchPublicJSON} from './public-transport';
+import {selectMarket} from './market-router';
 export {fetchSectorFallback};
 
 const globals=window as unknown as Record<string,unknown>;
@@ -35,21 +36,24 @@ const client=createPublicDataClient(async(url,options={})=>{
  if(options.kind==='jsonp')return jsonp(url);
  return fetchPublicJSON(url,options);
 });
-let snapshot:Market|null=null,snapshotPromise:Promise<Market|null>|null=null;
+let snapshot:Market|null=null,snapshotPromise:Promise<Market|null>|null=null,snapshotCheckedAt=0,embeddedChecked=false;
 export async function loadSnapshot():Promise<Market|null>{
  if(snapshotPromise)return snapshotPromise;
+ if(snapshot&&Date.now()-snapshotCheckedAt<30000)return snapshot;
  const embedded=document.getElementById('bootstrap-market');
- if(embedded?.textContent){try{const j=JSON.parse(embedded.textContent) as Market;if(Array.isArray(j.stocks)&&Array.isArray(j.indices)&&Array.isArray(j.sources)){snapshot=j;snapshotPromise=Promise.resolve(j);return j;}}catch{/* Use the separately published snapshot. */}}
- snapshotPromise=httpJSON<Market>(new URL('data/latest.json',new URL(import.meta.env.BASE_URL,location.href)).href,{}, {timeoutMs:3500,retries:0}).then(j=>{
+ if(!embeddedChecked&&embedded?.textContent){embeddedChecked=true;try{const j=JSON.parse(embedded.textContent) as Market;if(Array.isArray(j.stocks)&&Array.isArray(j.indices)&&Array.isArray(j.sources)){snapshot=j;snapshotCheckedAt=Date.now();return j;}}catch{/* Use the separately published snapshot. */}}
+ const snapshotUrl=new URL('data/latest.json',new URL(import.meta.env.BASE_URL,location.href));snapshotUrl.searchParams.set('t',String(Math.floor(Date.now()/30000)));
+ snapshotPromise=httpJSON<Market>(snapshotUrl.href,{}, {timeoutMs:3500,retries:0}).then(j=>{
   if(!Array.isArray(j.stocks)||!Array.isArray(j.indices)||!Array.isArray(j.sources))return null;snapshot=j;return j;
- }).catch(()=>null);return snapshotPromise;
+ }).catch(()=>snapshot).finally(()=>{snapshotPromise=null;snapshotCheckedAt=Date.now();});return snapshotPromise;
 }
 async function getMarket(force:boolean){
- await loadSnapshot();
- try{return await client.market(force,snapshot);}catch(e){
-  if(!snapshot)throw e;
-  return {...snapshot,cached:true,notice:`当前为构建时保存的真实快照（${snapshot.tradeDate||'日期未返回'}）；公开行情暂不可用，保留源时间，自动刷新后重试。`,servedAt:new Date().toISOString()};
- }
+ const stored=await loadSnapshot();
+ // Fixed public-data endpoint: no API key, cookies, account details or browser credentials are sent.
+ const directJob=client.market(force,stored).catch(()=>null);
+ const proxy=await httpJSON<Market>('https://obsidian-stock-radar.d69m29kwvj.chatgpt.site/api/market'+(force?'?fresh=1':''),{credentials:'omit'},{timeoutMs:10000,retries:0}).catch(()=>null);
+ if(proxy?.sources?.some(s=>s.id==='fuyao'&&(s.status==='ok'||s.status==='partial'))&&proxy.poolDate&&String(proxy.poolDate)>=String(stored?.poolDate||''))return selectMarket(proxy,null,stored);
+ return selectMarket(proxy,await directJob,stored);
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){
