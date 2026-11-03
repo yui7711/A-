@@ -56,3 +56,16 @@
 .freshness-bar.delayed{background:var(--risk-bg);border:1px solid var(--risk-line);border-radius:7px;padding:9px 12px}
 .freshness-bar.delayed>b{color:var(--risk-ink);font-weight:650}
 @media(max-width:600px){.focus-legend{padding-left:18px;padding-right:18px;gap:5px}.focus-legend>span{width:100%;margin-bottom:2px}.research-verdict h2{gap:7px}.verdict-tag{font-size:9px}.decision-strip>div{padding:8px}.decision-strip{gap:8px}.tactic-context{margin-left:18px;margin-right:18px}.mainline-focus-tag{font-size:7px;margin-left:4px}.auxiliary-grid>article{padding:10px}.check-state{font-size:8px}.plan-checks>.plan-check{flex-wrap:wrap}.plan-check b{margin-left:auto}.plan-checks .check-state{margin-left:0}}
+.focus-muted{--focus-ink:#586170;--focus-bg:#f1f3f6;--focus-line:#cdd3db}
+:root[data-theme=dark] .focus-muted{--focus-ink:#bfc9d8;--focus-bg:#252b36;--focus-line:#465264}
+.tactic-summary{flex-wrap:wrap}.tactic-heading{flex:1;min-width:230px}.tactic-heading h2{line-height:1.7}
+.tactic-action-banner{display:flex;align-items:center;gap:11px;margin:15px 22px 12px;padding:12px 14px;border:1px solid var(--focus-line);border-left:4px solid var(--focus-ink);border-radius:8px;background:var(--focus-bg);color:var(--focus-ink)}
+.tactic-action-banner>svg{flex-shrink:0}.tactic-action-banner>div{min-width:0}.tactic-action-banner strong{display:block;font-size:13px;line-height:1.8;font-weight:650}.tactic-action-banner span{display:block;font-size:10px;margin-top:3px;line-height:1.8}.tactic-action-banner>small{margin-left:auto;font-size:9px;line-height:1.8;max-width:160px}
+.tactics-panel .tactic-context{background:none;border:0;padding:0;line-height:1.9}
+.tactic-card-action{color:var(--focus-ink);background:var(--focus-bg);border-left:3px solid var(--focus-ink);padding:7px 9px;border-radius:5px;font-size:10px;line-height:1.8;font-weight:650;margin-top:12px}
+.tactic-state-reason{font-size:10px;line-height:1.9;color:var(--secondary);margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.tactic-match>strong{font-size:20px}.tactic-match small{font-size:9px}.tactic-candidates>.tactic-sample-label{font-size:10px;font-weight:550;color:var(--secondary)}
+.tactic-state-guide{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:0 22px 17px;padding-top:15px;border-top:1px solid var(--line)}
+.tactic-state-guide .focus-pill{white-space:normal;font-size:9px}.tactic-state-guide p{font-size:9px;line-height:1.9;color:var(--secondary);margin:8px 0 0}
+@media(max-width:1150px){.tactic-state-guide{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.tactic-heading{min-width:0;flex-basis:100%}.tactic-action-banner{margin-left:18px;margin-right:18px;flex-wrap:wrap}.tactic-action-banner>small{margin-left:29px;max-width:none}.tactic-action-banner strong{font-size:12px}.tactic-state-guide{margin-left:18px;margin-right:18px;gap:14px 10px}.tactic-state-guide .focus-pill{font-size:8px}.tactic-card-title{flex-wrap:wrap}}

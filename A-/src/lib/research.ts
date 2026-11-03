@@ -37,7 +37,7 @@ export function buildMainlines(stocks:Stock[]){
  return {lines,poolCount:pool.length,excludedST:unique.length-pool.length,duplicates:stocks.length-unique.length,removed:[...removed]};
 }
 
-export type ResearchContext={delayed:boolean;defensive:boolean;clock:{live:boolean;label:string;date:string};primary:string};
+export type ResearchContext={dataIssue?:string;delayed:boolean;defensive:boolean;clock:{live:boolean;label:string;date:string};primary:string};
 export function buildResearch(data:Market|null,context:ResearchContext){
  const mainlines=buildMainlines(data?.stocks||[]);
  // Height and ladder use the whole pool, including stocks without usable theme tags.
@@ -61,7 +61,7 @@ export function buildResearch(data:Market|null,context:ResearchContext){
  ];
  const known=dimensions.filter(d=>d.value!=null),average=known.length?score(known.reduce((sum,d)=>sum+d.value!,0)/known.length):null;
  const dated=!!data&&data.tradeDate===context.clock.date;
- const blocked=!data||context.delayed||!dated||!aligned;
+ const blocked=!data||context.delayed||!!context.dataIssue||!dated||!aligned;
  const defensive=context.defensive||blast!=null&&blast>=.25||up!=null&&up<40;
  const phase=blocked?'等待有效行情':defensive?'防守观察':average!=null&&average>=7?'偏强 · 继续验证':'分歧 · 条件观察';
  const resealPool=up===nonST.length?nonST:up===all.length?all:[];
