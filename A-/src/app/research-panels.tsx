@@ -1,0 +1,42 @@
+'use client';
+import {ArrowRight,Check,ChevronDown,Clock,Layers,Minus,ShieldCheck,SlidersHorizontal,Target} from 'lucide-react';
+import type {Market} from '@/lib/market-types';
+import {buildResearch} from '@/lib/research';
+import {assessTactics} from '@/lib/tactics';
+
+type Props={data:Market|null;now:number};
+const percent=(n:number|null)=>n==null?'待确认':(n*100).toFixed(1)+'%';
+const money=(n:number|null)=>n==null?'缺失':(n/1e8).toFixed(2)+'亿';
+function model({data,now}:Props){const tactics=assessTactics(data,now);return {...buildResearch(data,tactics),tactics};}
+export function SentimentPanel(props:Props){
+ const r=model(props);
+ return <section className="panel research-environment" aria-label="情绪六维评分模型">
+  <div className="research-verdict"><div><span className="section-step">01 · 先判断环境</span><h2>{r.phase}</h2><p>{r.conclusion}</p></div><div className="research-score"><span>可用维度均分</span><strong>{r.average?.toFixed(1)??'—'}<small> / 10</small></strong><span>{r.known}/6 维可计算 · {r.known<6?'部分评分':'完整评分'}</span></div></div>
+  <div className="decision-strip"><div><small>当前时段</small><strong>{r.tactics.clock.label}</strong></div><div><small>研究战法</small><strong>{r.blocked||r.defensive?'观望 / 等待验证':r.tactics.primary}</strong></div><div><small>去噪主线首位</small><strong>{r.mainlines.lines[0]?.name||'等待数据'}</strong></div><div><small>执行状态</small><strong>{r.blocked?'暂停评估':!r.tactics.clock.live?'快照复盘':r.ready?'条件齐备 · 待盘口':'等待条件共振'}</strong></div></div>
+  <div className="six-heading"><h3>情绪六维评分模型</h3><span>本站规则 v1 · 等权 · 缺失不计零</span></div>
+  <div className="six-dimensions">{r.dimensions.map(d=><div className={'dimension '+(d.value==null?'unavailable':'')} key={d.id}><div className="dimension-title"><strong>{d.name}</strong><b>{d.value==null?'待验证':d.value.toFixed(1)+' / 10'}</b></div><div className="dimension-track"><i style={{width:`${(d.value??0)*10}%`}}/></div><p>{d.detail}</p></div>)}</div>
+  <details className="research-method"><summary><SlidersHorizontal size={13}/>查看公式、覆盖率与参考边界 <ChevronDown size={13}/></summary><p>借鉴参考报告的六维结构；原报告为 2026-11-03 11:30 静态午盘报告，未公开评分公式。本站自行定义以下规则，按可用维度等权均分；4/6 维不能视为完整六维结论，分值未经收益回测。盘中样本与收盘样本不可直接比较。</p>{r.dimensions.map(d=><p key={d.id}><strong>{d.name}：</strong>{d.rule}</p>)}<p>涨停与炸板沿用上游整体口径；梯队与主线排除 ST。池与统计日期不一致、池不完整或统计核对失败时，对应项暂停计分；不同接口更新时间可能存在差异。交易日是否休市仍以交易所公告为准。</p></details>
+ </section>;
+}
+
+export function MainlinePanel(props:Props&{onStock:(code:string,name:string)=>void}){
+ const r=model(props),m=r.mainlines;
+ return <section className="panel mainline-panel"><div className="panel-heading"><div><span className="section-step">02 · 再找有效主线</span><h2>涨停主线热度 <span className="sub-badge">剔噪声</span></h2><p>产业归并 · 同主线同股去重 · 排除 ST 与交易属性</p></div><Layers size={19} className="blue"/></div>
+ <div className="mainline-table"><div className="mainline-table-head"><span>主线 / 涨停样本</span><span>结构热度</span><span>梯队 / 当前封单</span><span>高度观察股</span></div>{m.lines.slice(0,6).map((g,i)=><div className="mainline-row" key={g.name}><div className="mainline-name"><em>{String(i+1).padStart(2,'0')}</em><div><strong>{g.name}</strong><small>{g.count} 只 · 占非 ST 池 {percent(g.share)}</small></div></div><div className="mainline-heat"><strong>{g.heat}<small> / 100</small></strong><i><b style={{width:g.heat+'%'}}/></i></div><div className="mainline-structure"><strong>最高 {g.highest} 板 · {g.ladder} 个连板层级</strong><small>{money(g.seal)} · {g.sealKnown}/{g.count} 只有封单</small></div><div className="mainline-leaders">{g.stocks.slice(0,2).map(s=><button key={s.code} onClick={()=>props.onStock(s.code,s.name)}>{s.name}<span>{s.boards}板</span><ArrowRight size={11}/></button>)}</div></div>)}</div>
+ {!m.lines.length&&<p className="research-empty">暂无可归类的真实涨停样本，行情返回后自动更新。</p>}
+ <details className="research-method"><summary><SlidersHorizontal size={13}/>去噪规则与原始标签 <ChevronDown size={13}/></summary><p>样本 {m.poolCount} 只非 ST；排除 ST {m.excludedST} 只、重复记录 {m.duplicates} 条。结构热度 = min(涨停数,12)/12×60 + min(最高板,6)/6×25 + min(连板层级,3)/3×15。热度是结构分，不是涨幅、资金流入或胜率；不同主线仍可包含同一股票。</p><p>过滤属性：融资融券、沪深股通、指数成分、机构重仓、昨日涨停、低价/超跌，以及字辈/谐音、业绩、重组、国资、地域等非产业标签（这些标签仍可在个股原始原因中查看）。归并示例：固态/钠/锂电池 → 新能源电池，游戏/出版/影视 → 传媒；其他产业标签按原名保留。成交额、封单和行业净流入分别展示，不相互替代。</p>{m.lines.slice(0,6).map(g=><p key={g.name}><strong>{g.name}：</strong>{g.tags.join('、')}</p>)}<p>本轮过滤标签：{m.removed.join('、')||'未出现额外属性标签'}。主线迁移需要历史快照，本版暂不声称已确认切换。</p></details></section>;
+}
+
+export function PlanPanel(props:Props){
+ const r=model(props),live=r.tactics.clock.live;
+ return <section className="panel plan-panel"><div className="panel-heading"><div><span className="section-step">04 · 把判断变成条件</span><h2>今明两日交易计划 <span className="sub-badge">条件研究</span></h2><p>先检查防守条件，再验证进攻条件 · 行情日期 {props.data?.tradeDate||'待更新'}</p></div><Target size={19} className="blue"/></div><div className="plan-grid">
+  <article><div className="plan-label"><Clock size={15}/>今日 · {live?'盘中观察':'快照复盘'}</div><h3>{r.blocked?'等待有效数据':r.phase}</h3><p>{r.summary}</p><div className="plan-checks">{r.checks.map(c=><div key={c.label}>{c.passed==null?<Clock size={12}/>:c.passed?<Check size={12}/>:<Minus size={12}/>}<span>{c.label}</span><b>{c.detail}</b></div>)}</div><small>{!live?'休市结果只用于复盘，不能作为当前成交触发。':r.blocked?'数据异常，暂停评估。':r.ready?'环境观察条件满足；盘口与承接仍待核验。':'未同时满足条件，继续观察。'}</small></article>
+  <article><div className="plan-label"><ArrowRight size={15}/>明日 · 下一交易日</div><h3>重新验证，条件满足再观察</h3><p>使用下一交易日的新行情，重新检查涨停 ≥80、炸板率 &lt;18%、四指数均值翻红、首位主线 ≥5 只涨停。今天的结果不会当作明天已满足。</p><ol><li>开盘后核验主线留存与梯队承接。</li><li>按三大战法建立名单，逐只验证盘口。</li><li>弱转强需补查昨日分歧与今日竞价。</li></ol><span className="plan-pending">待下一交易日数据 · 竞价与昨日对照待核验</span></article>
+  <article className={'defense-plan '+(r.defensive?'triggered':'')}><div className="plan-label"><ShieldCheck size={15}/>防守 · 优先级最高</div><h3>{r.blocked?'先处理数据有效性':r.defensive?'已触及防守条件':'持续监控风险门槛'}</h3><p>本站统一口径：炸板率 ≥25%，或涨停 &lt;40 家，或触发战法环境风控时，转为防守观察；盘中行情延迟直接暂停评估。</p><ul><li>不追逐多次开板、承接不足的高位股。</li><li>执行前明确个人风险预算和退出条件。</li><li>不根据缺失的5日线、竞价或历史指标生成触发。</li></ul><small>80 / 18% / 25% 等为本站研究门槛，非参考页完整模型或经验证交易系统；不自动下单、不生成仓位指令。</small></article>
+ </div></section>;
+}
+
+export function AuxiliaryPanel(props:Props){
+ const r=model(props);
+ return <section className="panel auxiliary-panel"><div className="panel-heading"><div><span className="section-step">05 · 最后交叉验证</span><h2>辅助信号</h2><p>辅助解释主结论；不同日期的数据保留原时点</p></div><ShieldCheck size={18} className="blue"/></div><div className="auxiliary-grid"><article><small>回封率 · 当日池推算</small><strong>{percent(r.reseal)}</strong><p>{r.reseal==null?'需完整池、全部开板次数、样本数量与炸板统计核对。':`${r.recovered} / (${r.recovered}+${r.opened})；${r.resealScope}；同数量口径推算，非逐笔回放。`}</p></article><article><small>当前高标开板压力</small><strong>{r.highOpen==null?'待确认':`${r.highOpen}/${r.highStocks.length} 只`}</strong><p>最高 {r.highest??'—'} 板中开板 &gt;1 次的数量。昨日高标断板情况尚未验证。</p></article><article><small>炸板率 · 整体统计</small><strong>{percent(r.blast)}</strong><p>{r.opened??'—'} / ({r.up??'—'}+{r.opened??'—'})；{r.consistent?(props.data?.stats.sealRateDerived?'按涨停 / 炸板两池计算，封板率为同公式推算。':'已与封板率交叉核对。'):'与封板率的口径核对待完成。'}</p></article><article><small>龙虎榜 · 披露时间</small><strong className="aux-date">{props.data?.lhbDate||'待披露'}</strong><p>{props.data?.lhb.length??0} 条去重披露记录，沿用各自统计周期；不作今日实时资金信号。</p></article></div></section>;
+}

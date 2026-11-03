@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {fyHistory,tencentHistory,sinaHistory} from '../src/lib/history-normalize.ts';
+test('FUYAO historical response for a Shenzhen stock maps millisecond dates and real OHLC',()=>{const d=fyHistory('sz002086',{item:[{date_ms:Date.parse('2026-11-03T00:00:00+08:00'),open_price:3.1,high_price:3.42,low_price:3.1,close_price:3.42,volume:123}]});assert.equal(d.points[0].time,'2026-11-03');assert.equal(d.points[0].price,3.42);assert.equal(d.points[0].low,3.1);assert.equal(d.date,'2026-11-03');});
+test('invalid and missing closing prices never generate fake chart points',()=>{assert.equal(fyHistory('sz002086',{item:[{date_ms:1,close_price:null},{date_ms:2,close_price:'NaN'}]}).points.length,0);assert.equal(tencentHistory('sz002086',{code:1}).points.length,0);});
+test('unadjusted fallback is disclosed and numeric string prices are parsed',()=>{const d=sinaHistory('sz002086',[{day:'2026-11-03',close:'3.42',open:'3.1',high:'3.42',low:'3.1',volume:'100'}]);assert.equal(d.points[0].price,3.42);assert.ok(d.source.includes('未复权'));});

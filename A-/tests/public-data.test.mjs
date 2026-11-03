@@ -1,0 +1,18 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createPublicDataClient,normalizeLhb} from '../src/lib/public-data.ts';
+function rawQuote(code){const a=Array(60).fill('');a[1]='测试';a[3]='3.42';a[4]='3.11';a[5]='3.2';a[30]='20261103150000';a[31]='0.31';a[32]='9.97';a[33]='3.42';a[34]='3.1';a[37]='12345';a[38]='12';return {array:a,text:`v_${code}="${a.join('~')}";`};}
+function provider(overrides={}){return async(url,options={})=>{
+ const u=new URL(url);if(options.kind==='quotes')return u.pathname.slice(3).split(',').map(c=>rawQuote(c).text).join('');
+ if(u.pathname==='/getTopicZTPool')return {data:{qdate:20261103,tc:1,pool:[{c:'002086',n:'东方海洋',p:3420,zdp:9.97,lbc:4,fbt:93000,zbc:1,fund:2e8,hybk:'水产养殖',hs:12}]}};
+ if(u.pathname==='/getTopicZBPool')return {data:{qdate:overrides.brokenDate??20261103,tc:1,pool:[]}};
+ if(u.pathname==='/getTopicDTPool')return {data:{qdate:20261103,tc:0,pool:[]}};
+ if(u.hostname==='push2.eastmoney.com')return {data:{diff:[{f12:'BK1',f14:'电池',f3:3,f62:100}]}};
+ if(u.hostname==='datacenter-web.eastmoney.com')return {result:{data:[{TRADE_DATE:'2026-11-02 00:00:00',SECURITY_CODE:'002086',SECURITY_NAME_ABBR:'东方海洋',BILLBOARD_NET_AMT:2e6,EXPLANATION:'日涨幅偏离值'}]}};
+ throw Error('Unexpected public URL '+url);
+};}
+test('static market uses public pools, real OHLC, and an explicitly derived seal rate',async()=>{const r=await createPublicDataClient(provider()).market(true);assert.equal(r.stocks.length,1);assert.equal(r.stocks[0].price,3.42);assert.equal(r.stocks[0].open,3.2);assert.equal(r.stocks[0].turnover,12);assert.equal(r.poolTimestamp,null);assert.equal(r.poolDate,'2026-11-03');assert.equal(r.stats.opened,1);assert.equal(r.stats.sealRate,.5);assert.equal(r.stats.sealRateDerived,true);assert.equal(r.indices.length,4);assert.equal(r.lhbDate,'2026-11-02');assert.equal(r.keyConfigured,false);});
+test('pool dates must match before failed-seal statistics can participate',async()=>{const r=await createPublicDataClient(provider({brokenDate:20261102})).market(true);assert.equal(r.stats.opened,null);assert.equal(r.stats.sealRate,null);});
+test('after-hours hot snapshot retains its source date, never refreshes its date with the page',async()=>{const snapshot={hot:[{code:'002086',name:'东方海洋',rank:1,heat:null}],sources:[{id:'hot',date:'2026-10-30'}],lhb:[],lhbDate:null};const r=await createPublicDataClient(provider()).market(true,snapshot);assert.equal(r.sources.find(s=>s.id==='hot').date,'2026-10-30');assert.equal(r.sources.find(s=>s.id==='hot').status,'partial');});
+test('latest-day LHB records dedupe separately for one-day and three-day periods',()=>{const row={TRADE_DATE:'2026-11-03 00:00:00',SECURITY_CODE:'002086',SECURITY_NAME_ABBR:'东方海洋',BILLBOARD_NET_AMT:100};const r=normalizeLhb({result:{data:[{...row,TRADE_DATE:'2026-11-02 00:00:00'},row,{...row,BILLBOARD_NET_AMT:200},{...row,EXPLANATION:'连续三个交易日累计涨幅',BILLBOARD_NET_AMT:300}]}});assert.equal(r.date,'2026-11-03');assert.equal(r.rows.length,2);assert.deepEqual(r.rows.map(s=>s.net).sort((a,b)=>a-b),[200,300]);assert.ok(r.rows.every(s=>s.org===null));});
+test('empty chart providers fail instead of inventing prices',async()=>{await assert.rejects(createPublicDataClient(async()=>({data:{}})).history('sz002086','day'),/真实价格/);});
+test('CORS quote fallback extracts the same public quote fields without an API key',async()=>{const client=createPublicDataClient(async(url,options)=>{if(options?.kind==='quotes')throw Error('script blocked');return {data:{sz002086:{qt:{sz002086:rawQuote('sz002086').array}}}};});const q=await client.quotes(['sz002086']);assert.equal(q[0].price,3.42);assert.equal(q[0].high,3.42);});

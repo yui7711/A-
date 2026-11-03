@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {fetchPublicJSON} from '../src/lib/public-transport.ts';
+test('Tencent JSON using JavaScript MIME remains data and can be parsed safely',async(t)=>{t.mock.method(globalThis,'fetch',async(_url,init)=>{assert.equal(init.credentials,'omit');assert.equal(init.headers,undefined);return new Response('{"code":0,"data":{"price":3.42}}',{headers:{'Content-Type':'application/javascript; charset=utf-8'}});});assert.equal((await fetchPublicJSON('https://web.ifzq.gtimg.cn/test')).data.price,3.42);});
+test('a JavaScript assignment is rejected rather than executed by the JSON transport',async(t)=>{t.mock.method(globalThis,'fetch',async()=>new Response('callback({"price":3.42})'));await assert.rejects(fetchPublicJSON('https://example.test'),/有效 JSON/);});

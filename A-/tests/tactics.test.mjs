@@ -1,0 +1,15 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {assessTactics,marketClock} from '../src/lib/tactics.ts';
+const now=Date.parse('2026-11-03T11:00:00+08:00');
+const stock=(x={})=>({code:'002086',name:'测试',boards:4,score:70,seal:1e8,isST:false,turnover:12,open:3,high:3.42,low:3,quoteDate:'20261103110000',...x});
+const base=(x={})=>({fetchedAt:new Date(now).toISOString(),tradeDate:'2026-11-03',poolDate:'2026-11-03',poolTimestamp:now,stocks:[stock(),stock({code:'600261',boards:2})],indices:[{change:-.5,time:'20261103110000'}],stats:{up:48,down:10,sealRate:.59},themes:[{count:7}],...x});
+test('three tactics have the exact reference names and select turnover in a divided market',()=>{const a=assessTactics(base(),now);assert.deepEqual(a.tactics.map(t=>t.name).sort(),['龙头战法','换手战法','弱转强战法'].sort());assert.equal(a.primary,'换手战法');});
+test('high board count cannot override weak market risk controls',()=>{const a=assessTactics(base({stocks:[stock({boards:8})],stats:{up:30,down:40,sealRate:.4}}),now);assert.equal(a.primary,'观望 / 等待验证');});
+test('delayed intraday quotes suspend tactical recommendation',()=>{const a=assessTactics(base({indices:[{change:1,time:'20261103100000'}]}),now);assert.equal(a.delayed,true);assert.equal(a.primaryId,null);});
+test('one-price bars, missing turnover and quotes from another date are not turnover candidates',()=>{const d=base({stocks:[stock({high:3.42,low:3.42}),stock({turnover:null}),stock({quoteDate:'20261102110000'})]});assert.equal(assessTactics(d,now).tactics.find(t=>t.id==='turnover').candidates.length,0);});
+test('missing essential turnover evidence does not force a different tactic with failed core conditions',()=>{const a=assessTactics(base({stocks:[stock({turnover:null})]}),now);assert.equal(a.primaryId,null);});
+test('two boards remain weak-to-strong candidates with unverified confirmation',()=>{const t=assessTactics(base(),now).tactics.find(t=>t.id==='weak');assert.equal(t.candidates.length,1);assert.equal(t.checks.at(-1).passed,null);});
+test('after-hours values are labelled as snapshot research, not live triggers',()=>{const a=assessTactics(base(),Date.parse('2026-11-03T18:00:00+08:00'));assert.equal(a.clock.live,false);assert.ok(a.context.includes('下一交易时段再验证'));});
+test('no data produces watch mode, and lunch / close auction boundaries are correct',()=>{assert.equal(assessTactics(null,now).primaryId,null);assert.equal(marketClock(Date.parse('2026-11-03T11:30:00+08:00')).phase,'lunch');assert.equal(marketClock(Date.parse('2026-11-03T14:57:00+08:00')).phase,'auction');});
+test('shared defense thresholds suspend all three tactics before individual matches',()=>{assert.equal(assessTactics(base({stats:{up:48,down:10,opened:34,sealRate:48/82}}),now).primaryId,null);assert.equal(assessTactics(base({stats:{up:39,down:1,opened:0,sealRate:1}}),now).primaryId,null);});
+test('a previous-date close is reference data and cannot produce a current tactic',()=>{assert.equal(assessTactics(base({tradeDate:'2026-11-02'}),Date.parse('2026-11-03T18:00:00+08:00')).primaryId,null);});
