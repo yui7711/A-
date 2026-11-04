@@ -10,6 +10,8 @@ export function sourceLabel(s:Source){
  if(s.errorCode==='rate-limit')return '接口限流 · 稍后重试';
  if(s.errorCode==='configuration')return '服务端未配置 Key';
  if(s.errorCode==='timeout')return '接口超时 · 自动重试';
+ if(s.id==='fuyao'&&s.transport==='server'&&s.status==='error')return '转发连接失败 · 可启用直连';
+ if(s.id==='fuyao'&&s.transport==='browser-direct'&&s.status==='ok')return s.mode==='close'?'直连已验证 · 收盘数据':'直连已验证 · 自动刷新';
  if(s.status==='error')return '连接失败 · 自动重试';
  if(s.status==='missing')return '待配置';
  if(s.status==='partial')return '缺失项待核实';

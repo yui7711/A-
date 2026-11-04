@@ -5,7 +5,7 @@ import {connectionHint} from './connection-hint.ts';
 import {selectMarket} from './market-router.ts';
 type Kind='fuyao'|'public';
 type Result={kind:Kind;data:Market|null;checkedAt:number;error?:string};
-type Options={live:(force:boolean)=>Promise<Market>;publicMarket:(force:boolean,snapshot:Market|null)=>Promise<Market>;snapshot:()=>Promise<Market|null>;previous?:()=>Market|null;now?:()=>number};
+type Options={live:(force:boolean)=>Promise<Market>;publicMarket:(force:boolean,snapshot:Market|null)=>Promise<Market>;snapshot:()=>Promise<Market|null>;previous?:()=>Market|null;now?:()=>number;preferLive?:()=>boolean};
 /** Whole-pool validation: a response containing quotes alone is not a healthy pool. */
 export function cohortGrade(data:Market|null,kind:Kind,now=Date.now()){
  if(!hasMarketData(data)||!data.poolDate||data.poolDate!==data.tradeDate||data.providerMode==='snapshot')return 0;
@@ -29,7 +29,7 @@ export async function firstAvailable<T>(jobs:Array<()=>Promise<T>>,valid:(value:
  return Promise.any(jobs.map(async job=>{const value=await job();if(!valid(value))throw Error('通道未返回有效数据');return value;}));
 }
 /** A pending browser request is shared across polls, so a slow standby never multiplies requests. */
-export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=>null,now=Date.now}:Options){
+export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=>null,now=Date.now,preferLive=()=>false}:Options){
  let pending:Promise<Result>|null=null,lastLive:Result|null=null,lastPublic:Result|null=null,active:Kind|null=null;
  function checkLive(force:boolean){
   if(pending)return pending;
@@ -38,10 +38,11 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
  }
  function standby():Source{
   const row=lastLive?.data?.sources.find(s=>s.id==='fuyao'),available=lastLive?.data&&cohortGrade(lastLive.data,'fuyao',now())===2;
-  return {id:'fuyao',name:'同花顺兼容源 · FUYAO（实时自动通道）',url:'https://fuyao.aicubes.cn',date:row?.date||null,
+  const direct=row?.transport==='browser-direct';
+  return {id:'fuyao',transport:direct?'browser-direct':'server',name:direct?'同花顺兼容源 · FUYAO（本页直连）':'同花顺兼容源 · FUYAO（实时自动通道）',url:'https://fuyao.aicubes.cn',date:row?.date||null,
    status:available?'ok':lastLive?'error':'partial',mode:'fallback',availability:available?'standby':lastLive?'unavailable':'checking',
    checkedAt:lastLive?new Date(lastLive.checkedAt).toISOString():undefined,errorCode:row?.errorCode,
-   message:available?'同花顺实时通道可用；公开源故障时自动接管，Key只在服务端使用。':lastLive?(lastLive.error||row?.message||'同花顺本轮日期、时效或池完整性未通过检查')+'；自动继续东方财富 / 腾讯，下轮重试。':'正在独立检测同花顺实时通道；不阻塞公开直连，Key只在服务端使用。'};
+   message:available?(direct?'本页直连已验证，Key 仅用于同花顺接口；公开源故障时自动接管。':'同花顺实时通道可用；公开源故障时自动接管，Key只在服务端使用。'):lastLive?(lastLive.error||row?.message||'同花顺本轮日期、时效或池完整性未通过检查')+'；自动继续东方财富 / 腾讯，下轮重试。':'正在检测同花顺连接；不阻塞公开直连。'};
  }
  function modules(data:Market,other:Market|null){
   if(!other)return data;
@@ -68,8 +69,13 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
    }
    selected=partial[0];
   }
+  // Explicitly enabled private direct connection gets a bounded chance, still requiring a full healthy cohort.
+  if(preferLive()&&selected.kind==='public'&&valid(selected)){
+   const direct=await new Promise<Result|null>(resolve=>{const timer=setTimeout(()=>resolve(null),2500);void liveJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});});
+   if(direct)selected=direct;
+  }
   // Keep a healthy active cohort within a bounded 500ms grace, avoiding source-count flicker.
-  if(active&&selected.kind!==active&&valid(selected)){
+  if(active&&selected.kind!==active&&valid(selected)&&!(preferLive()&&selected.kind==='fuyao')){
    const previousJob=active==='fuyao'?liveJob:publicJob;
    const stable=await new Promise<Result|null>(resolve=>{const timer=setTimeout(()=>resolve(null),500);void previousJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});});
    if(stable)selected=stable;
@@ -79,7 +85,8 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
    const publicDone=await Promise.race([publicJob,Promise.resolve(null)]);
    const backup=publicDone||(lastPublic&&now()-lastPublic.checkedAt<30000?lastPublic:null),merged=modules(selected.data!,backup?.data||null),available=cohortGrade(backup?.data||null,'public',now())===2;
    const em:Source={id:'em-pool',name:'东方财富 · 实时自动备用池',status:available?'ok':backup?'error':'partial',availability:available?'standby':backup?'unavailable':'checking',mode:'fallback',date:backup?.data?.poolDate||null,url:'https://quote.eastmoney.com/ztb/',checkedAt:backup?new Date(backup.checkedAt).toISOString():undefined,message:available?'东方财富完整同日池可用；同花顺故障时自动接管。':backup?'东方财富本轮暂不可用；同花顺正在提供完整行情，下轮自动重试。':'正在独立检测东方财富备用池，不阻塞同花顺行情。'};
-   return {...merged,providerMode:'proxy',sources:[...merged.sources.filter(s=>s.id!=='em-pool').map(s=>s.id==='fuyao'?{...s,availability:'active' as const}:s),em],notice:'三源自动切换 · 当前涨停池与统计：同花顺；报价按各自来源标注。每5秒刷新，故障时自动切换东方财富 / 腾讯。'};
+   const direct=merged.sources.some(s=>s.id==='fuyao'&&s.transport==='browser-direct');
+   return {...merged,providerMode:'proxy',sources:[...merged.sources.filter(s=>s.id!=='em-pool').map(s=>s.id==='fuyao'?{...s,transport:s.transport||'server' as const,availability:'active' as const}:s),em],notice:`三源自动切换 · 当前涨停池与统计：同花顺${direct?'本页直连（绕过转发域名）':''}；报价按各自来源标注。每5秒请求，故障时自动切换东方财富 / 腾讯。`};
   }
   const other=lastLive&&now()-lastLive.checkedAt<30000?lastLive.data:null;
   const data=modules(selected.data!,other);

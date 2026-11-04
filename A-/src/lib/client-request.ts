@@ -7,6 +7,7 @@ import {fetchPublicJSON} from './public-transport';
 import {createMultiSourceReader,firstAvailable} from './multi-source';
 import {createPublicResearchClient} from './public-research';
 import {getDataRoute} from './connection-preferences';
+import {hasFuyaoDirect,readFuyaoDirect,fuyaoDirectRevision} from './fuyao-direct';
 export {fetchSectorFallback};
 
 const globals=window as unknown as Record<string,unknown>;
@@ -61,8 +62,10 @@ const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 function publicRoute(){return getDataRoute(k=>localStorage.getItem(k))==='public';}
 let lastMarket:Market|null=null;
-const multiSource=createMultiSourceReader({live:f=>proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),snapshot:loadSnapshot,previous:()=>lastMarket,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
+const makeReader=()=>createMultiSourceReader({live:f=>hasFuyaoDirect()?readFuyaoDirect():proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),preferLive:hasFuyaoDirect,snapshot:loadSnapshot,previous:()=>lastMarket,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
+let multiSource=makeReader(),directRevision=fuyaoDirectRevision();
 async function getMarket(force:boolean){
+ if(directRevision!==fuyaoDirectRevision()){directRevision=fuyaoDirectRevision();multiSource=makeReader();}
  const data=await multiSource(force,publicRoute()?'public':'auto');
  const next=data.providerMode==='proxy'&&!data.research?await publicResearch(data,await loadSnapshot()):data;
  if(next.providerMode!=='snapshot')lastMarket=next;return next;
