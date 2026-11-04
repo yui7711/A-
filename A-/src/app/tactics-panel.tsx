@@ -1,10 +1,12 @@
 'use client';
+import {useState} from 'react';
 import {ArrowRight,Check,Clock,Minus,ShieldCheck,Target} from 'lucide-react';
 import {assessTactics,tacticStates} from '@/lib/tactics';
 import type {Market} from '@/lib/market-types';
+import TacticScanner from './tactic-scanner';
 
 export default function TacticsPanel({data,now,expanded=false,onExpand,onStock}:{data:Market|null;now:number;expanded?:boolean;onExpand?:()=>void;onStock:(code:string,name:string)=>void}){
- const a=assessTactics(data,now);
+ const a=assessTactics(data,now),[expandedLists,setExpandedLists]=useState<string[]>([]);
  return <section className={'panel tactics-panel focus-'+a.status.color+' '+(expanded?'expanded':'')}>
   <div className="tactic-summary">
    <div className="tactic-heading"><span className="tactic-icon"><Target size={20}/></span><div><small>三大战法 · 适用性与操作含义</small><h2>{a.primaryId?'当前更适合研究：':'当前战法状态：'}<em>{a.primaryId?a.primary:a.status.label}</em></h2></div></div>
@@ -13,6 +15,8 @@ export default function TacticsPanel({data,now,expanded=false,onExpand,onStock}:
   </div>
   <div className="tactic-action-banner"><ShieldCheck size={18}/><div><strong>{a.status.action}</strong><span>买入信号：未生成已确认买点</span></div><small>{a.clock.live?'盘中条件评估':'休市复盘 · 下一交易时段重新验证'}</small></div>
   <p className="tactic-context"><Clock size={14}/>{a.context}</p>
+  <TacticScanner assessment={a} onStock={onStock} compact={!expanded}/>
+  <div className="tactic-detail-heading"><h3>三大战法 · 分项核验</h3><span>观察样本按观察分降序排列</span></div>
   <div className="tactic-cards">{a.tactics.map(t=>{
    const first=t.id===a.primaryId,label=t.stateId==='research'?(first?'当前可用 · 首选':'当前可用'):t.state.label;
    return <article key={t.id} className={'tactic-card focus-'+t.state.color+' '+(first?'preferred':'')}>
@@ -23,7 +27,8 @@ export default function TacticsPanel({data,now,expanded=false,onExpand,onStock}:
     <div className="tactic-state-reason">{t.stateReason}</div>
     {expanded&&<>
      <div className="tactic-checks">{t.checks.map(c=><div className={'tactic-check focus-'+(c.passed===true?'positive':c.passed===null?'muted':'risk')} key={c.label}>{c.passed===null?<Clock size={13}/>:c.passed?<Check size={13}/>:<Minus size={13}/>}<span>{c.label}<small>{c.detail}</small></span><b>{c.passed===null?'待核实':c.passed?'满足':'未满足'}</b></div>)}</div>
-     <div className="tactic-candidates"><p className="tactic-sample-label">观察样本 · 非买入名单</p>{t.candidates.map(s=><button key={s.code} onClick={()=>onStock(s.code,s.name)}><strong>{s.name}<small>{s.code}</small></strong><span>{s.boards}板 · {s.turnover==null?'换手缺失':`换手${s.turnover.toFixed(2)}%`}</span><ArrowRight size={12}/></button>)}{!t.candidates.length&&<p>暂无可验证样本，缺失数据不会当作条件已满足。</p>}</div>
+     <div className="tactic-candidates"><p className="tactic-sample-label">观察样本 · 观察分 ↓ · 非买入名单</p>{(expandedLists.includes(t.id)?t.candidates:t.candidates.slice(0,8)).map((s,i)=><button key={s.code} onClick={()=>onStock(s.code,s.name)}><em className="sample-rank">{String(i+1).padStart(2,'0')}</em><strong>{s.name}<small>{s.code} · {s.boards}板</small></strong><span className="sample-score"><b>{Number.isFinite(s.score)?s.score:'—'}<small> / {s.coverage??'—'}</small></b><small>{s.turnover==null?'换手缺失':`换手 ${s.turnover.toFixed(2)}%`}</small></span><ArrowRight size={12}/></button>)}{!t.candidates.length&&<p>暂无可验证样本，缺失数据不会当作条件已满足。</p>}</div>
+     {t.candidates.length>8&&<button className="sample-more" onClick={()=>setExpandedLists(v=>v.includes(t.id)?v.filter(id=>id!==t.id):[...v,t.id])}>{expandedLists.includes(t.id)?'收起至前8只':'展开全部 '+t.candidates.length+' 只'}</button>}
      <div className="tactic-notes">{t.missing.map(s=><small key={s}>{s}</small>)}</div>
     </>}
    </article>;
