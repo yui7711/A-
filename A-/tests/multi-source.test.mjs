@@ -29,6 +29,10 @@ test('both failures preserve the actual snapshot date and never mark it live',as
  const saved=data('fuyao',{fetchedAt:'2026-11-03T07:00:00Z',poolDate:'2026-11-03',tradeDate:'2026-11-03',providerMode:'snapshot'});
  const r=await createMultiSourceReader({now:()=>now,live:fail,publicMarket:fail,snapshot:async()=>saved})();assert.equal(r.providerMode,'snapshot');assert.equal(r.poolDate,'2026-11-03');assert.equal(r.fetchedAt,saved.fetchedAt);
 });
+test('a simultaneous outage retains the most recent successful cohort and evidence instead of an older build snapshot',async()=>{
+ const latest=data('public',{research:{source:'latest verified evidence'}}),old=data('fuyao',{fetchedAt:'2026-11-03T07:00:00Z',poolDate:'2026-11-03',tradeDate:'2026-11-03',providerMode:'snapshot'});
+ const r=await createMultiSourceReader({now:()=>now,live:fail,publicMarket:fail,snapshot:async()=>old,previous:()=>latest})();assert.equal(r.providerMode,'snapshot');assert.equal(r.stocks,latest.stocks);assert.equal(r.research,latest.research);assert.equal(r.fetchedAt,latest.fetchedAt);assert.ok(r.sources.every(s=>s.mode==='snapshot'));
+});
 test('completed THS live modules supplement public data without changing its pool, statistics or scoring source',async()=>{
  let resolve,calls=0;const fy=data('fuyao',{hot:[{code:'000001',name:'测试',rank:1,heat:100}],sources:[...data('fuyao').sources,{id:'hot',status:'ok',mode:'live',date:'2026-11-04',name:'THS实时热榜'}]});
  const pub=data('public',{hot:[],sources:[...data().sources,{id:'hot',status:'partial',mode:'snapshot',date:'2026-11-03'}]});

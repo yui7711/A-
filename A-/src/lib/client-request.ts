@@ -58,10 +58,12 @@ export async function loadSnapshot():Promise<Market|null>{
 const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 function publicRoute(){return getDataRoute(k=>localStorage.getItem(k))==='public';}
-const multiSource=createMultiSourceReader({live:f=>proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
+let lastMarket:Market|null=null;
+const multiSource=createMultiSourceReader({live:f=>proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),snapshot:loadSnapshot,previous:()=>lastMarket,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
 async function getMarket(force:boolean){
  const data=await multiSource(force,publicRoute()?'public':'auto');
- return data.providerMode==='proxy'&&!data.research?publicResearch(data,await loadSnapshot()):data;
+ const next=data.providerMode==='proxy'&&!data.research?await publicResearch(data,await loadSnapshot()):data;
+ if(next.providerMode!=='snapshot')lastMarket=next;return next;
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){

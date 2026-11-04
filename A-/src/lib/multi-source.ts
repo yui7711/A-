@@ -5,7 +5,7 @@ import {connectionHint} from './connection-hint.ts';
 import {selectMarket} from './market-router.ts';
 type Kind='fuyao'|'public';
 type Result={kind:Kind;data:Market|null;checkedAt:number;error?:string};
-type Options={live:(force:boolean)=>Promise<Market>;publicMarket:(force:boolean,snapshot:Market|null)=>Promise<Market>;snapshot:()=>Promise<Market|null>;now?:()=>number};
+type Options={live:(force:boolean)=>Promise<Market>;publicMarket:(force:boolean,snapshot:Market|null)=>Promise<Market>;snapshot:()=>Promise<Market|null>;previous?:()=>Market|null;now?:()=>number};
 /** Whole-pool validation: a response containing quotes alone is not a healthy pool. */
 export function cohortGrade(data:Market|null,kind:Kind,now=Date.now()){
  if(!hasMarketData(data)||!data.poolDate||data.poolDate!==data.tradeDate||data.providerMode==='snapshot')return 0;
@@ -29,7 +29,7 @@ export async function firstAvailable<T>(jobs:Array<()=>Promise<T>>,valid:(value:
  return Promise.any(jobs.map(async job=>{const value=await job();if(!valid(value))throw Error('通道未返回有效数据');return value;}));
 }
 /** A pending browser request is shared across polls, so a slow standby never multiplies requests. */
-export function createMultiSourceReader({live,publicMarket,snapshot,now=Date.now}:Options){
+export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=>null,now=Date.now}:Options){
  let pending:Promise<Result>|null=null,lastLive:Result|null=null,lastPublic:Result|null=null;
  function checkLive(force:boolean){
   if(pending)return pending;
@@ -61,7 +61,11 @@ export function createMultiSourceReader({live,publicMarket,snapshot,now=Date.now
   catch{
    const results=await Promise.all([publicJob,liveJob]);
    const partial=results.filter(r=>cohortGrade(r.data,r.kind,now())>0).sort((a,b)=>String(b.data!.poolDate).localeCompare(String(a.data!.poolDate))||Number(b.kind==='public')-Number(a.kind==='public'));
-   if(!partial.length)return selectMarket(null,null,await snapshotJob,'同花顺、东方财富实时通道本轮均未通过检查；当前保留有日期的快照');
+   if(!partial.length){
+    const saved=[previous(),await snapshotJob].filter((m):m is Market=>hasMarketData(m)).sort((a,b)=>String(b.poolDate).localeCompare(String(a.poolDate))||Date.parse(b.fetchedAt)-Date.parse(a.fetchedAt))[0];
+    const result=selectMarket(null,null,saved||null,'同花顺、东方财富实时通道本轮均未通过检查；当前保留最新成功快照');
+    return {...result,sources:result.sources.map(s=>s.id==='tdx'?s:{...s,availability:undefined,mode:'snapshot'})};
+   }
    selected=partial[0];
   }
   if(selected.kind==='fuyao'){
