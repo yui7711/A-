@@ -4,6 +4,8 @@ on:
     branches: [main, master]
     paths: ['A-/**', '.github/workflows/pages.yml']
   workflow_dispatch:
+  schedule:
+    - cron: '10 1 * * 1-5'
 permissions:
   contents: read
   pages: write
@@ -26,6 +28,10 @@ jobs:
       - run: npm test
         working-directory: A-
       - run: npm run collect
+        working-directory: A-
+        env:
+          FUYAO_API_KEY: ${{ secrets.FUYAO_API_KEY }}
+      - run: node --experimental-strip-types scripts/collect-history.mjs
         working-directory: A-
         env:
           FUYAO_API_KEY: ${{ secrets.FUYAO_API_KEY }}

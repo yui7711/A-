@@ -3,6 +3,8 @@ import {requestJSON as httpJSON,fetchSectorFallback} from './http-client';
 import {createPublicDataClient} from './public-data';
 import {fetchPublicJSON} from './public-transport';
 import {readLiveMarket} from './live-reader';
+import {createPublicResearchClient} from './public-research';
+import {selectMarket} from './market-router';
 export {fetchSectorFallback};
 
 const globals=window as unknown as Record<string,unknown>;
@@ -36,6 +38,12 @@ const client=createPublicDataClient(async(url,options={})=>{
  if(options.kind==='jsonp')return jsonp(url);
  return fetchPublicJSON(url,options);
 });
+let historyCache:{time:number;pools:any[]}|undefined;
+const publicResearch=createPublicResearchClient(url=>fetchPublicJSON(url),Date.now,async()=>{
+ if(historyCache&&Date.now()-historyCache.time<60000)return historyCache.pools;
+ const url=location.protocol==='file:'?new URL('https://yui7711.github.io/A-/data/history.json'):new URL('data/history.json',new URL(import.meta.env.BASE_URL,location.href));
+ const j=await httpJSON<{pools:any[]}>(url.href,{}, {timeoutMs:3500,retries:0});if(!Array.isArray(j.pools))throw Error('历史对照格式无效');historyCache={time:Date.now(),pools:j.pools};return j.pools;
+});
 let snapshot:Market|null=null,snapshotPromise:Promise<Market|null>|null=null,snapshotCheckedAt=0,embeddedChecked=false;
 export async function loadSnapshot():Promise<Market|null>{
  if(snapshotPromise)return snapshotPromise;
@@ -48,9 +56,11 @@ export async function loadSnapshot():Promise<Market|null>{
  }).catch(()=>snapshot).finally(()=>{snapshotPromise=null;snapshotCheckedAt=Date.now();});return snapshotPromise;
 }
 const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
-const proxyJSON=<T,>(path:string,timeoutMs=18000)=>httpJSON<T>(liveURL+path,{credentials:'omit'},{timeoutMs,retries:0});
+const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 async function getMarket(force:boolean){
- return readLiveMarket(force,{live:f=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':'')),snapshot:loadSnapshot,publicMarket:(f,s)=>client.market(f,s)});
+ let directOnly=false;try{directOnly=JSON.parse(localStorage.getItem('obsidian-data-route-v1')||'null')==='public';}catch{}
+ if(directOnly){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端');}
+ return readLiveMarket(force,{live:(f,signal)=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':''),18000,signal),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){

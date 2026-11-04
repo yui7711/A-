@@ -33,7 +33,7 @@ export function createPublicDataClient(transport:Transport){
    const j=await transport('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+c+',day,,,1,qfq');
    const q=j?.data?.[c]?.qt?.[c];return Array.isArray(q)?parseTencent(`v_${c}="${q.join('~')}";`):[];
   }));
-  const result=rows.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+ const result=rows.flatMap(r=>r.status==='fulfilled'?r.value:[]);
   if(!result.length)throw new Error('腾讯公开报价暂不可用');return result;
  }
  async function lhb(){
@@ -57,7 +57,8 @@ export function createPublicDataClient(transport:Transport){
   const val=(i:number)=>settled[i].status==='fulfilled'?(settled[i] as PromiseFulfilledResult<any>).value:null;
   const up=val(0)?.data,broken=val(1)?.data,down=val(2)?.data;
   if(!Array.isArray(up?.pool))throw new Error('东方财富涨停池暂未返回，保留最近可用快照');
-  const poolDate=dateString(up.qdate),stocks:Stock[]=up.pool.map(mapEMPool);
+  const poolDate=dateString(up.qdate);if(poolDate!==date)throw Error('东方财富涨停池交易日与请求日期不一致');
+  const stocks:Stock[]=[...new Map<string,Stock>(up.pool.map(mapEMPool).filter((s:Stock)=>/^\d{6}$/.test(s.code)).map((s:Stock)=>[s.code,s])).values()];
   const details=await quotes(stocks.map(s=>symbol(s.code))).catch(()=>[]),qmap=new Map(details.map(q=>[q.code.slice(2),q]));
   const enriched=stocks.map(s=>{const q=qmap.get(s.code);return q?{...s,price:q.price??s.price,change:q.change??s.change,open:q.open,high:q.high,low:q.low,turnover:q.turnover??s.turnover,quoteDate:q.time,source:s.source+' · 腾讯报价'}:s;});
   const upCount=num(up.tc),opened=dateString(broken?.qdate)===poolDate?num(broken?.tc):null,downCount=dateString(down?.qdate)===poolDate?num(down?.tc):null;
@@ -69,14 +70,14 @@ export function createPublicDataClient(transport:Transport){
   }
   const l=val(4),oldHot=snapshot?.sources.find(s=>s.id==='hot'),hot=snapshot?.hot||[];
   const sources:Source[]=[
-   {id:'em-pool',name:'东方财富 · 涨停 / 炸板池',status:opened==null?'partial':'ok',message:`涨停 ${enriched.length}/${upCount??'—'}；炸板 ${opened??'缺失'}；题材按行业近似；源未返回秒级池时间`,date:poolDate,url:'https://quote.eastmoney.com/ztb/'},
+   {id:'em-pool',name:'东方财富 · 涨停 / 炸板池',status:opened==null||enriched.length!==upCount?'partial':'ok',mode:poolDate===shDate(Date.now())?'live':'close',checkedAt:new Date().toISOString(),message:`浏览器实时请求；涨停 ${enriched.length}/${upCount??'—'}；炸板 ${opened??'缺失'}；题材按行业近似；源未返回秒级池时间`,date:poolDate,url:'https://quote.eastmoney.com/ztb/'},
    {id:'tencent',name:'腾讯行情',status:indices.length===4?'ok':'partial',message:'四大指数、个股报价、真实分时与日线；浏览器直连公开接口',date,url:'https://gu.qq.com/'},
    {id:'eastmoney',name:'东方财富 · 行业行情',status:val(3)?.length?'ok':'error',message:val(3)?.length?'行业涨幅与主力净流入':'行业接口暂不可用',date:val(3)?.length?date:null,url:'https://quote.eastmoney.com/'},
    {id:'lhb',name:'东方财富 · 龙虎榜',status:l?'ok':snapshot?.lhb.length?'partial':'error',message:l?'按最新披露日、个股和统计周期去重；机构净额未提供':snapshot?.lhb.length?'保留静态快照；按实际披露日期显示':'等待公开披露接口返回',date:l?.date||snapshot?.lhbDate||null,url:'https://data.eastmoney.com/stock/tradedetail.html'},
    {id:'hot',name:'东方财富 · 人气榜快照',status:hot.length?'partial':'missing',message:hot.length?'来自构建时公开热榜快照；页面刷新不会将快照标作实时':'等待 GitHub Actions 获取公开人气榜快照',date:oldHot?.date||null,url:'https://guba.eastmoney.com/rank/'},
    {id:'tdx',name:'通达信',status:'missing',message:'支持本机导入 .blk / .txt / .csv 自选，未配置实时授权接口',date:null,url:'https://www.tdx.com.cn/'},
   ];
-  const value:Market={fetchedAt:new Date().toISOString(),servedAt:new Date().toISOString(),tradeDate:poolDate,poolDate,poolTimestamp:null,poolTotal:upCount,stocks:enriched,indices,stats:{up:upCount,down:downCount,opened,sealRate,sealRateDerived:true,exact:[...boards].map(([board,count])=>({board,count}))},sectors:val(3)||[],themes:[...themes.values()].sort((a,b)=>b.count-a.count).slice(0,18),lhb:l?.rows||snapshot?.lhb||[],lhbDate:l?.date||snapshot?.lhbDate||null,hot,sources,keyConfigured:false};
+  const value:Market={themeBasis:'industry',providerMode:'public',fetchedAt:new Date().toISOString(),servedAt:new Date().toISOString(),tradeDate:poolDate,poolDate,poolTimestamp:null,poolTotal:upCount,stocks:enriched,indices,stats:{up:upCount,down:downCount,opened,sealRate,sealRateDerived:true,exact:[...boards].map(([board,count])=>({board,count}))},sectors:val(3)||[],themes:[...themes.values()].sort((a,b)=>b.count-a.count).slice(0,18),lhb:l?.rows||snapshot?.lhb||[],lhbDate:l?.date||snapshot?.lhbDate||null,hot,sources,keyConfigured:false};
   cache={time:Date.now(),value};return value;
  }
  async function history(code:string,mode='day'):Promise<History>{

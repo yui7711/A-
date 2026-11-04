@@ -12,5 +12,6 @@ export function sourceLabel(s:Source){
  if(s.status==='partial')return '缺失项待核实';
  if(s.mode==='close')return '最近交易日';
  if(s.mode==='empty')return '已连接 · 暂无记录';
+ if(s.id==='em-pool')return '实时直连 · 备用通道';
  return '实时已连接';
 }

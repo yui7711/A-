@@ -8,7 +8,7 @@ export function hasMarketData(value:unknown):value is Market{
 
 /** A failed refresh must not replace useful data with an empty result. */
 export function retainMarket(previous:Market|null,next:Market):Market{
- if(previous?.stocks.length&&!next.stocks.length&&next.sources.some(s=>s.id==='fuyao'&&(s.status==='error'||s.status==='missing'))){
+ if(previous?.stocks.length&&!next.stocks.length&&next.sources.some(s=>s.id==='fuyao'&&(s.status==='error'||s.status==='missing'))&&!next.sources.some(s=>s.id==='em-pool'&&s.status==='ok'&&next.poolTotal===0&&next.stats.up===0&&next.poolDate===next.tradeDate)){
   return {...next,stocks:previous.stocks,poolDate:previous.poolDate,poolTimestamp:previous.poolTimestamp,poolTotal:previous.poolTotal,themes:previous.themes,tradeDate:previous.tradeDate,stats:previous.stats,fetchedAt:previous.fetchedAt,cached:true,notice:'涨停源暂时不可用，涨停池与情绪统计保留上次成功快照，其他模块按各自时点展示。'};
  }
  if(!hasMarketData(next)&&previous&&hasMarketData(previous))return {...previous,cached:true,notice:'本次行情请求未返回有效数据，当前保留上次成功快照。'};
