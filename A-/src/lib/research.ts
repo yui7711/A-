@@ -1,4 +1,6 @@
 import type {Market,Stock} from './market-types';
+import {marketRisk} from './market-risk.ts';
+import {locateEmotionCycle} from './emotion-cycle.ts';
 
 const clamp=(n:number)=>Math.max(0,Math.min(10,n));
 const score=(n:number)=>Math.round(clamp(n)*10)/10;
@@ -34,7 +36,8 @@ export function buildMainlines(stocks:Stock[]){
   const heat=Math.round(Math.min(g.stocks.length,12)/12*60+Math.min(highest,6)/6*25+Math.min(ladder,3)/3*15);
   return {name:g.name,count:g.stocks.length,share:pool.length?g.stocks.length/pool.length:0,highest,ladder,seal,sealKnown:seals.length,heat,tags:[...g.tags],stocks:g.stocks.sort((a,b)=>b.boards-a.boards||b.score-a.score)};
  }).sort((a,b)=>b.heat-a.heat||b.count-a.count||a.name.localeCompare(b.name,'zh-CN'));
- return {lines,poolCount:pool.length,excludedST:unique.length-pool.length,duplicates:stocks.length-unique.length,removed:[...removed]};
+ const classified=new Set(lines.flatMap(g=>g.stocks.map(s=>s.code)));
+ return {lines,poolCount:pool.length,unclassified:pool.length-classified.size,excludedST:unique.length-pool.length,duplicates:stocks.length-unique.length,removed:[...removed]};
 }
 
 function historicalSignals(data:Market|null,complete:boolean,mainlines:ReturnType<typeof buildMainlines>,context:ResearchContext){
@@ -50,12 +53,13 @@ function historicalSignals(data:Market|null,complete:boolean,mainlines:ReturnTyp
  const currentTaxonomy=data?.themeBasis||(data?.stocks.every(s=>s.source?.startsWith('FUYAO'))?'reason':'industry');
  const taxonomy=prior?.taxonomy===currentTaxonomy;
  const retained=previousLines.filter(line=>currentLines.some(c=>c.name===line.name));
- const continuity=complete&&previousComplete&&taxonomy&&previousLines.length&&currentLines.length?retained.length/previousLines.length:null;
+ const c=e?.themeCoverage,fullThemes=!c||c.current===c.currentTotal&&c.previous===c.previousTotal;
+ const continuity=complete&&previousComplete&&taxonomy&&fullThemes&&previousLines.length&&currentLines.length?retained.length/previousLines.length:null;
  const v=e?.volume;
  let volumeValid=!!v&&e?.tradeDate===data?.tradeDate&&v.date===data?.tradeDate&&v.previousDate===e?.previousDate&&v.previousDate<v.date&&Number.isFinite(v.currentAmount)&&v.currentAmount>=0&&Number.isFinite(v.previousAmount)&&v.previousAmount>0;
  if(volumeValid&&context.clock.live&&v!.date===context.clock.date){const cut=Number(v!.cutoff.slice(0,2))*60+Number(v!.cutoff.slice(3)),quotes=(data?.indices||[]).filter(q=>['sh000001','sz399001'].includes(q.code)&&q.time?.slice(0,8)===v!.date.replaceAll('-','')).map(q=>Number(q.time.slice(8,10))*60+Number(q.time.slice(10,12)));if(quotes.length!==2||cut>Math.min(...quotes)||Math.min(...quotes)-cut>3)volumeValid=false;}
  const volumeRatio=volumeValid?v!.currentAmount/v!.previousAmount:null;
- const volumeScore=volumeRatio!=null&&continuity!=null?score(.7*clamp(5+(volumeRatio-1)*10)+.3*continuity*10):null;
+ const volumeScore=volumeRatio!=null?score(5+(volumeRatio-1)*10):null;
  return {e,prior,previousComplete,previousNonST,promoted,promotionRate,previousLines,currentLines,retained,continuity,volumeRatio,volumeScore,volumeValid};
 }
 
@@ -70,12 +74,12 @@ export function buildResearch(data:Market|null,context:ResearchContext){
  const blast=aligned&&up!=null&&opened!=null&&up+opened>0?opened/(up+opened):null;
  const rate=data?.stats.sealRate??null;
  const consistent=blast!=null&&rate!=null&&Math.abs((1-blast)-rate)<=.03;
- const changes=(data?.indices||[]).map(q=>q.change).filter((n):n is number=>n!=null);
+ const changes=(data?.indices||[]).map(q=>q.change).filter((n):n is number=>n!=null&&Number.isFinite(n));
  const avg=changes.length?changes.reduce((a,b)=>a+b,0)/changes.length:null;
  const levels=new Set(nonST.filter(s=>s.boards>=2).map(s=>s.boards)).size;
  const history=historicalSignals(data,complete,mainlines,context);
  const dimensions=[
-  {id:'volume',name:'量能 / 主线切换',value:history.volumeScore,detail:history.volumeScore!=null?`沪深 ${history.e!.volume!.cutoff} 同刻成交额 ${(history.e!.volume!.currentAmount/1e8).toFixed(1)} / 昨日 ${(history.e!.volume!.previousAmount/1e8).toFixed(1)} 亿（${history.volumeRatio!.toFixed(2)}倍）；前3主线保留 ${history.retained.length}/${history.previousLines.length}`:history.volumeRatio==null?'正在核对两日相同时刻的沪深成交额；不以昨日全天代替。':!history.previousComplete?'上一交易日完整主线名单未齐，暂不计分。':'主线标签口径未对齐或暂无可分类样本，暂不计分。',rule:'v2：量能分=限幅[5+(同刻成交额比−1)×10]，占70%；昨日前三产业主线在今日前三的保留比例×10，占30%。仅用同口径主线；切换名称作变化提示，不等于机会。'},
+  {id:'volume',name:'量能 / 同刻成交',value:history.volumeScore,detail:history.volumeScore!=null?`沪深 ${history.e!.volume!.cutoff} 同刻成交额 ${(history.e!.volume!.currentAmount/1e8).toFixed(1)} / 昨日 ${(history.e!.volume!.previousAmount/1e8).toFixed(1)} 亿（${history.volumeRatio!.toFixed(2)}倍）`:'两日相同时刻的沪深成交额未齐；不以昨日全天代替。',rule:'v3：得分=5+(同刻成交额比−1)×10，限制在0–10。仅使用日期、截点核实过的沪深两日金额；主线留存独立展示，个别行业缺失不会使全市场量能失效。'},
   {id:'ladder',name:'连板高度与梯队',value:complete&&highest!=null?score(Math.min(highest,6)/6*7+Math.min(levels,3)):null,detail:highest==null?'涨停池未返回':`非 ST 最高 ${highest} 板 · ${levels} 个连板层级${complete?'':' · 池未完整，暂不计分'}`,rule:'高度 min(最高板,6)÷6×7 + min(连板层级数,3)，上限10分。'},
   {id:'promotion',name:'晋级率 / 接力意愿',value:history.promotionRate==null?null:score(history.promotionRate*20),detail:history.promotionRate==null?'正在核对上一交易日完整涨停名单；历史池或当前池不完整时暂停计算。':`昨日非ST涨停 ${history.previousNonST.length} 只，今日仍涨停且源板数≥2共 ${history.promoted} 只；逐股晋级率 ${(history.promotionRate*100).toFixed(1)}%`,rule:'v2：昨日非ST完整涨停名单，与今日非ST涨停且板数≥2股票按代码取交集；晋级率=交集÷昨日样本数，得分=晋级率×20，上限10。昨日无样本不填零。'},
   {id:'breadth',name:'涨停广度 / 数量',value:aligned&&up!=null?score(up/10):null,detail:up==null?'涨停统计缺失':`源口径涨停 ${up} 家 · 跌停 ${down??'—'} 家`,rule:'涨停家数÷10，上限10分。固定阈值仅作本站研究标尺。'},
@@ -85,8 +89,9 @@ export function buildResearch(data:Market|null,context:ResearchContext){
  const known=dimensions.filter(d=>d.value!=null),average=known.length?score(known.reduce((sum,d)=>sum+d.value!,0)/known.length):null;
  const dated=!!data&&data.tradeDate===context.clock.date;
  const blocked=!data||context.delayed||!!context.dataIssue||!dated||!aligned;
- const defensive=context.defensive||blast!=null&&blast>=.25||up!=null&&up<40;
- const phase=blocked?'等待有效行情':defensive?'防守观察':average!=null&&average>=7?'偏强 · 继续验证':'分歧 · 条件观察';
+ const risk=marketRisk(data,avg),defensive=context.defensive||risk.defensive,caution=risk.caution;
+ const cycle=locateEmotionCycle({valid:!blocked&&complete&&consistent&&changes.length===4,up,down,blast,highest,average:avg,severeRisk:defensive,known:known.length});
+ const phase=blocked?'等待有效行情':cycle.name;
  const resealPool=up===nonST.length?nonST:up===all.length?all:[];
  const resealScope=up===nonST.length?'非 ST':'含 ST';
  const recovered=complete&&resealPool.length>0&&resealPool.every(s=>s.openTimes!=null)?resealPool.filter(s=>s.openTimes!>0).length:null;
@@ -95,8 +100,8 @@ export function buildResearch(data:Market|null,context:ResearchContext){
  const highOpen=highStocks.length&&highStocks.every(s=>s.openTimes!=null)?highStocks.filter(s=>s.openTimes!>1).length:null;
  const condition=(label:string,passed:boolean|null,detail:string)=>({label,passed,detail});
  const checks=[condition('涨停家数 ≥ 80',up==null?null:up>=80,`${up??'—'} 家`),condition('炸板率 < 18%',blast==null?null:blast<.18,blast==null?'待同口径统计':`${(blast*100).toFixed(1)}%`),condition('四大指数平均翻红',avg==null?null:avg>0,avg==null?'指数缺失':`${avg.toFixed(2)}%`),condition('首位主线 ≥ 5 只涨停',mainlines.lines.length?mainlines.lines[0].count>=5:null,`${mainlines.lines[0]?.count??'—'} 只`)];
- const ready=context.clock.live&&!blocked&&!defensive&&complete&&checks.every(c=>c.passed===true);
- return {history,mainlines,dimensions,known:known.length,average,phase,blocked,defensive,blast,reseal,recovered,resealScope,highOpen,highStocks,highest,up,down,opened,avg,complete,aligned,consistent,poolCount:nonST.length,checks,ready,
-  conclusion:blocked?'核实行情日期与源时间后，再评估计划。':defensive?'风险条件已触及，优先防守观察。':ready?'进攻观察条件齐备，仍需核验个股承接。':'先看主线承接，等待环境与个股条件共振。',
+ const ready=context.clock.live&&!blocked&&!defensive&&!caution&&complete&&checks.every(c=>c.passed===true);
+ return {history,mainlines,dimensions,known:known.length,average,phase,cycle,risk,caution,blocked,defensive,blast,reseal,recovered,resealScope,highOpen,highStocks,highest,up,down,opened,avg,complete,aligned,consistent,poolCount:nonST.length,checks,ready,
+  conclusion:blocked?'先核实数据有效性，再判断阶段和战法。':defensive?'严重风险门槛触发，暂停使用战法；具体原因如下。':caution?'情绪阶段与风控分开判断：当前有分歧谨慎项，逐项核验战法。':ready?'环境观察条件齐备，个股买点仍待确认。':'依据当前广度、梯队与封板质量定位阶段，再核验战法条件。',
   summary:`${data?.tradeDate||'最近交易日'}：涨停 ${up??'—'} 家，炸板 ${opened??'—'} 家，非 ST 最高 ${highest??'—'} 板。${mainlines.lines[0]?`结构热度首位为${mainlines.lines[0].name}（${mainlines.lines[0].count}只）。`:'主线待数据补充。'}`};
 }

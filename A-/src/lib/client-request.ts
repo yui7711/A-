@@ -1,4 +1,6 @@
-import type {History,Market} from './market-types';
+import type {History,Market,Quote} from './market-types';
+import {symbol} from './market-core';
+import {selectQuotes} from './quote-selection';
 import {requestJSON as httpJSON,fetchSectorFallback} from './http-client';
 import {createPublicDataClient} from './public-data';
 import {fetchPublicJSON} from './public-transport';
@@ -70,8 +72,9 @@ async function chart(code:string,mode:string){
  const id=code+mode;try{const jobs=[()=>client.history(code,mode),()=>proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),7000)];const h=await firstAvailable(publicRoute()?jobs:jobs.reverse(),h=>!!h.points?.length);chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
 }
 async function getWatchQuotes(codes:string){
- const jobs=[async()=>({quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))}),()=>proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),7000)];
- return firstAvailable(publicRoute()?jobs:jobs.reverse(),r=>!!r.quotes?.length);
+ const requested=[...new Set(codes.split(',').filter(c=>/^\d{6}$/.test(c)))];
+ const jobs=[async()=>({quotes:await client.quotes(requested.map(symbol))}),()=>proxyJSON<{quotes:Quote[]}>('/api/quotes?codes='+encodeURIComponent(requested.join(',')),7000)];
+ return selectQuotes(requested,publicRoute()?jobs:jobs.reverse());
 }
 export async function requestJSON<T>(url:string,init:RequestInit={},options:{timeoutMs?:number;retries?:number}={}):Promise<T>{
  if(!url.startsWith('/api/'))return httpJSON<T>(url,init,options);

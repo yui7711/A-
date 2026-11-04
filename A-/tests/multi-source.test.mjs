@@ -43,3 +43,5 @@ test('completed THS live modules supplement public data without changing its poo
 test('chart and watch quote races ignore empty replies and return a valid backup',async()=>{
  assert.deepEqual(await firstAvailable([async()=>[],async()=>[1]],r=>r.length>0),[1]);assert.deepEqual(await firstAvailable([fail,async()=>[2]],r=>r.length>0),[2]);await assert.rejects(firstAvailable([fail,async()=>[]],r=>r.length>0));
 });
+
+test('a healthy active source is stable across small speed changes without blocking failover',async()=>{let round=0;const wait=(ms,v)=>new Promise(r=>setTimeout(()=>r(v),ms));const read=createMultiSourceReader({now:()=>now,snapshot:async()=>null,publicMarket:()=>round===0?Promise.resolve(data()):round===1?wait(15,data()):fail(),live:()=>round===0?wait(5,data('fuyao')):Promise.resolve(data('fuyao'))});assert.equal((await read()).providerMode,'public');await wait(8);round=1;assert.equal((await read()).providerMode,'public');round=2;assert.equal((await read()).providerMode,'proxy');});

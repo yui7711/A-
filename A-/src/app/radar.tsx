@@ -28,7 +28,14 @@ type Selection={code:string;name:string;stock?:Stock};
 function Empty({text='暂时没有数据',sub='刷新后重试，或在数据来源中检查连接状态。'}:{text?:string;sub?:string}){return <div className="empty"><Radio size={26}/><strong>{text}</strong><span>{sub}</span></div>;}
 function PriceChart({code,mode='minute',refresh=0}:{code:string;mode?:string;refresh?:number}){
  const [data,setData]=useState<History|null>(null), chartRef=useRef<History|null>(null), chartIdentity=useRef(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[hover,setHover]=useState<number|null>(null),[retry,setRetry]=useState(0);
- useEffect(()=>{const a=new AbortController();if(chartIdentity.current!==code+mode){setLoading(true);setData(null);chartIdentity.current=code+mode;}setError('');requestJSON<History>(`/api/history?code=${code}&mode=${mode}&fresh=1`,{signal:a.signal},{timeoutMs:15000,retries:0}).then(j=>{setHover(null);setData(j);chartRef.current=j;}).catch(e=>{if(e.name!=='AbortError')setError('图表暂不可用，可稍后刷新。');}).finally(()=>{if(!a.signal.aborted)setLoading(false);});return()=>a.abort();},[code,mode,refresh,retry]);
+ const chartLoad=useRef<(()=>void)|null>(null);
+ useEffect(()=>{const a=new AbortController();let inFlight=false;
+  if(chartIdentity.current!==code+mode){setLoading(true);setData(null);chartRef.current=null;chartIdentity.current=code+mode;}
+  const load=()=>{if(inFlight||a.signal.aborted)return;inFlight=true;setError('');
+   requestJSON<History>(`/api/history?code=${code}&mode=${mode}&fresh=1`,{signal:a.signal},{timeoutMs:15000,retries:0}).then(j=>{if(a.signal.aborted)return;setHover(null);setData(j);chartRef.current=j;}).catch(e=>{if(e.name!=='AbortError')setError('图表暂不可用，可稍后刷新。');}).finally(()=>{inFlight=false;if(!a.signal.aborted)setLoading(false);});
+  };chartLoad.current=load;load();return()=>{a.abort();chartLoad.current=null;};
+ },[code,mode,retry]);
+ useEffect(()=>{chartLoad.current?.();},[refresh]);
  if(loading)return <div className="chart-loading"><RefreshCw size={20} className="spin"/><span>正在连接行情…</span></div>;
  if(!data?.points.length)return <div className="chart-error"><Empty text={error||'暂无图表'} sub="已尝试真实行情源，未使用模拟价格。"/><button className="secondary-btn" onClick={()=>setRetry(n=>n+1)}><RefreshCw size={14}/>重新获取图表</button></div>;
  const p=data.points,prices=p.map(x=>x.price),low=Math.min(...prices),high=Math.max(...prices),range=high-low||high*.01||1;const y=(v:number)=>178-(v-low)/range*145;const path=p.map((v,i)=>`${i===0?'M':'L'} ${i/(p.length-1||1)*800} ${y(v.price)}`).join(' ');const selected=hover===null?null:p[hover];

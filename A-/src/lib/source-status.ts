@@ -4,7 +4,7 @@ export function sourceLabel(s:Source){
  if(s.availability==='standby')return '备用可用 · 自动切换';
  if(s.availability==='checking')return '检测中 · 自动切换';
  if(s.id==='fuyao'&&s.mode==='fallback'&&s.status==='missing')return '未使用 · 直连模式';
- if(s.mode==='snapshot')return '备用收盘快照';
+ if(s.mode==='snapshot')return '备用快照 · 原时点';
  if(s.errorCode==='auth')return 'Key 无效';
  if(s.errorCode==='permission')return '接口权限不足';
  if(s.errorCode==='rate-limit')return '接口限流 · 稍后重试';

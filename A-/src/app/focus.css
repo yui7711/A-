@@ -71,3 +71,26 @@
 @media(max-width:600px){.tactic-heading{min-width:0;flex-basis:100%}.tactic-action-banner{margin-left:18px;margin-right:18px;flex-wrap:wrap}.tactic-action-banner>small{margin-left:29px;max-width:none}.tactic-action-banner strong{font-size:12px}.tactic-state-guide{margin-left:18px;margin-right:18px;gap:14px 10px}.tactic-state-guide .focus-pill{font-size:8px}.tactic-card-title{flex-wrap:wrap}}
 
 .dimension-source{display:block;margin-top:8px;font-size:10px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+
+/* Strategy fill and snapshot emotion cycle. */
+.tactic-cards>.tactic-card{background:var(--focus-bg);border:1px solid var(--focus-line);box-shadow:inset 0 4px 0 var(--focus-ink)}
+.tactic-card.preferred{border-color:var(--positive-ink);box-shadow:inset 0 4px 0 var(--positive-ink)}
+.tactic-card h3,.tactic-card .tactic-match>strong{color:var(--focus-ink)}
+.tactic-card .tactic-card-action{background:var(--panel)}
+.tactic-card .tactic-state-reason{color:var(--focus-ink);border-color:var(--focus-line)}
+.tactic-card .tactic-candidates button{background:var(--panel)}
+.research-score>small{display:block;font-size:9px;color:var(--secondary);margin-top:8px}
+.risk-reasons{font-size:11px;line-height:1.9;max-width:620px}
+.emotion-cycle{padding:20px 26px;border-bottom:1px solid var(--line);background:var(--panel)}
+.cycle-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+.cycle-heading h3{margin:0;font-size:14px}.cycle-heading>span{font-size:10px;color:var(--secondary)}
+.cycle-track{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;list-style:none;padding:0;margin:0}
+.cycle-stage{padding:10px 10px 11px;background:var(--focus-bg);border:1px solid var(--focus-line);border-top:4px solid var(--focus-line);border-radius:8px;color:var(--focus-ink);min-width:0}
+.cycle-stage>span{display:block;font-size:9px;min-height:16px}.cycle-stage strong{font-size:16px;display:block;margin:4px 0 6px}.cycle-stage small{font-size:9px;line-height:1.7;display:block;color:var(--secondary)}
+.cycle-stage.current{border-color:var(--focus-ink);box-shadow:0 0 0 2px var(--focus-bg)}
+.cycle-stage.current strong,.cycle-stage.current>span{font-weight:700;color:var(--focus-ink)}
+.emotion-cycle>p{font-size:10px;color:var(--secondary);margin:11px 0 8px;line-height:1.8}
+.cycle-evidence{display:flex;flex-wrap:wrap;gap:7px}.cycle-evidence>span{padding:4px 8px;border:1px solid var(--line);border-radius:5px;font-size:10px}
+.cycle-rules{font-size:10px;color:var(--secondary);line-height:1.9;margin-top:10px}.cycle-rules summary{cursor:pointer}.cycle-rules p{margin-bottom:0}
+@media(max-width:900px){.cycle-track{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.emotion-cycle{padding:18px}.cycle-track{grid-template-columns:repeat(2,minmax(0,1fr))}.cycle-stage{padding:8px}.cycle-stage small{font-size:10px}}

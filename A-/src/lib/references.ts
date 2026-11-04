@@ -1,4 +1,5 @@
 export const references = [
+  {id:8,title:"A股情绪龙头看盘终端",url:"https://4m3up9y9zqya9.doubao.link/app/app_17hcfa88gkk",strengths:["六阶段颜色便于快速定位","广度、高度、炸板率集中解释阶段","主线与战法连看，减少来回切换"],adopted:"增加六阶段进度条、当前标记和指标依据；情绪阶段与风控状态分开呈现。",status:"已核对页面与公开脚本；原规则冰点与衰退存在覆盖重叠，本站重新定义有顺序的快照规则，不照搬分数或交易结论。"},
   {
     id: 7,
     title: "情绪六维·午盘决策报告",

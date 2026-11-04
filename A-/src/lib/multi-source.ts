@@ -30,7 +30,7 @@ export async function firstAvailable<T>(jobs:Array<()=>Promise<T>>,valid:(value:
 }
 /** A pending browser request is shared across polls, so a slow standby never multiplies requests. */
 export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=>null,now=Date.now}:Options){
- let pending:Promise<Result>|null=null,lastLive:Result|null=null,lastPublic:Result|null=null;
+ let pending:Promise<Result>|null=null,lastLive:Result|null=null,lastPublic:Result|null=null,active:Kind|null=null;
  function checkLive(force:boolean){
   if(pending)return pending;
   const job=Promise.resolve().then(()=>live(force)).then(data=>({kind:'fuyao' as const,data,checkedAt:now()}),e=>({kind:'fuyao' as const,data:null,checkedAt:now(),error:connectionHint(e)}));
@@ -68,6 +68,13 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
    }
    selected=partial[0];
   }
+  // Keep a healthy active cohort within a bounded 500ms grace, avoiding source-count flicker.
+  if(active&&selected.kind!==active&&valid(selected)){
+   const previousJob=active==='fuyao'?liveJob:publicJob;
+   const stable=await new Promise<Result|null>(resolve=>{const timer=setTimeout(()=>resolve(null),500);void previousJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});});
+   if(stable)selected=stable;
+  }
+  if(valid(selected))active=selected.kind;
   if(selected.kind==='fuyao'){
    const publicDone=await Promise.race([publicJob,Promise.resolve(null)]);
    const backup=publicDone||(lastPublic&&now()-lastPublic.checkedAt<30000?lastPublic:null),merged=modules(selected.data!,backup?.data||null),available=cohortGrade(backup?.data||null,'public',now())===2;

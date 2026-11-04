@@ -28,12 +28,14 @@ export function createPublicDataClient(transport:Transport){
  async function quotes(codes:string[]):Promise<Quote[]>{
   const valid=[...new Set(codes.filter(c=>/^(sh|sz|bj)\d{6}$/.test(c)))].slice(0,200);
   if(!valid.length)return [];
-  try{const text=await transport('https://qt.gtimg.cn/q='+valid.join(','),{kind:'quotes'});const q=parseTencent(text);if(q.length)return q;}catch{/* CORS-capable Tencent endpoint below. */}
-  const rows=await Promise.allSettled(valid.map(async c=>{
+  let primary:Quote[]=[];
+  try{const text=await transport('https://qt.gtimg.cn/q='+valid.join(','),{kind:'quotes'});primary=parseTencent(text).filter(q=>valid.includes(q.code)&&q.price!=null&&q.price>0);}catch{/* CORS-capable Tencent endpoint below. */}
+  const missing=valid.filter(c=>!primary.some(q=>q.code===c));
+  const rows=await Promise.allSettled(missing.map(async c=>{
    const j=await transport('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+c+',day,,,1,qfq');
    const q=j?.data?.[c]?.qt?.[c];return Array.isArray(q)?parseTencent(`v_${c}="${q.join('~')}";`):[];
   }));
- const result=rows.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+ const result=[...primary,...rows.flatMap(r=>r.status==='fulfilled'?r.value:[])];
   if(!result.length)throw new Error('腾讯公开报价暂不可用');return result;
  }
  async function lhb(){

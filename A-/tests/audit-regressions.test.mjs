@@ -1,0 +1,27 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {assessTactics} from '../src/lib/tactics.ts';
+import {locateEmotionCycle} from '../src/lib/emotion-cycle.ts';
+import {marketRisk} from '../src/lib/market-risk.ts';
+import {symbol} from '../src/lib/market-core.ts';
+import {selectQuotes} from '../src/lib/quote-selection.ts';
+const now=Date.parse('2026-11-04T14:20:00+08:00');
+const stock=(code,boards=2)=>({code,name:code,isST:false,boards,score:60,turnover:12,quoteDate:'20261104142000',high:10,low:9});
+const market=()=>({tradeDate:'2026-11-04',poolDate:'2026-11-04',poolTimestamp:now,poolTotal:2,stocks:[stock('000001',3),stock('000002')],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,price:3000,change:1,time:'20261104142000'})),themes:[{count:6}],stats:{up:86,down:8,opened:34,sealRate:86/120}});
+test('observed 86 up / 34 failed / 8 down is cautious rather than blanket suspended',()=>{const a=assessTactics(market(),now);assert.equal(a.defensive,false);assert.equal(a.caution,true);assert.equal(a.tactics.find(t=>t.id==='turnover').state.color,'watch');assert.match(a.context,/28.3%/);});
+test('all four requested strategy colors have distinct truthful triggers',()=>{
+ const d=market();d.stats={up:86,down:8,opened:10,sealRate:86/96};assert.equal(assessTactics(d,now).tactics.find(t=>t.id==='turnover').state.color,'positive');
+ d.stats={up:86,down:8,opened:100,sealRate:86/186};assert.equal(assessTactics(d,now).tactics.find(t=>t.id==='turnover').state.color,'risk');
+ d.poolTotal=3;assert.ok(assessTactics(d,now).tactics.every(t=>t.state.color==='muted'));
+ assert.equal(assessTactics(market(),now).status.color,'watch');
+});
+test('serious index or down-limit pressure overrides otherwise passing strategy checks',()=>{for(const change of [-2,-3]){const d=market();d.indices=d.indices.map(q=>({...q,change}));assert.equal(assessTactics(d,now).defensive,true);}const d=market();d.stats={...d.stats,down:61};assert.equal(assessTactics(d,now).defensive,true);});
+test('duplicate, missing, future, nonfinite and invalid-price quotes cannot produce green',()=>{for(const mutate of [d=>d.indices[3]=d.indices[0],d=>d.indices[0].time='20261104142500',d=>d.indices[0].change=NaN,d=>d.indices[0].price=0,d=>d.indices.pop(),d=>d.stats.sealRate=1.2,d=>d.stocks.push(d.stocks[0])]){const d=market();mutate(d);assert.ok(assessTactics(d,now).tactics.every(t=>t.state.color==='muted'));}});
+const cycle=(x={})=>locateEmotionCycle({valid:true,up:86,down:8,blast:34/120,highest:3,average:1,severeRisk:false,known:6,...x});
+test('current strong breadth with moderate blast identifies ferment and exposes exact metrics',()=>{assert.equal(cycle().id,'ferment');assert.match(cycle().basis,/不是时间百分比/);assert.match(cycle().matched.join(' '),/28.3%/);});
+test('all cycle stages are reachable and ice is not shadowed by decline',()=>{for(const [expected,x] of [['ice',{up:10,highest:1,blast:.6}],['start',{up:35,highest:2,blast:.1}],['ferment',{}],['climax',{highest:5,blast:.1}],['divide',{blast:.4}],['decline',{blast:.46}]])assert.equal(cycle(x).id,expected);});
+test('core evidence absence gives no fabricated stage, including when only optional factors are absent',()=>{assert.equal(cycle({valid:false}).index,-1);assert.equal(cycle({highest:null}).id,'unknown');assert.equal(cycle({known:4}).id,'ferment');});
+test('92-series Beijing stocks must use Beijing exchange symbols',()=>{assert.equal(symbol('920770'),'bj920770');assert.equal(symbol('920298'),'bj920298');assert.equal(symbol('830001'),'bj830001');assert.equal(symbol('600000'),'sh600000');assert.equal(symbol('000001'),'sz000001');});
+const quote=(code,time='20261104142000',price=10)=>({code,time,price,source:'真实报价'});
+test('fast partial watch quotes cannot hide a slower complete response',async()=>{const r=await selectQuotes(['000001','000002'],[async()=>({quotes:[quote('sz000001')]}),async()=>({quotes:[quote('sz000001'),quote('sz000002')]})]);assert.equal(r.quotes.length,2);});
+test('only after complete sources fail are partial whole quotes merged by latest timestamp',async()=>{const r=await selectQuotes(['000001','000002','000003'],[async()=>({quotes:[quote('sz000001','20261104141900'),quote('sz000002')]}),async()=>({quotes:[quote('sz000001','20261104142000',11)]}),async()=>{throw Error('离线');}]);assert.equal(r.quotes.length,2);assert.equal(r.quotes.find(q=>q.code==='sz000001').price,11);assert.ok(!r.quotes.some(q=>q.code==='sz000003'));});
+test('missing or zero prices never become valid watch quotes',async()=>{await assert.rejects(selectQuotes(['000001'],[async()=>({quotes:[quote('sz000001','',0)]})]));});

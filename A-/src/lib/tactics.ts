@@ -1,12 +1,14 @@
 import type {Market,Stock} from './market-types';
+import {marketRisk} from './market-risk.ts';
+import {locateEmotionCycle} from './emotion-cycle.ts';
 export type Check={label:string;passed:boolean|null;detail:string};
 export type Tactic={id:string;name:string;description:string;checks:Check[];candidates:Stock[];missing:string[]};
 export const tacticStates={
- research:{color:'priority',label:'可研究',action:'买点未确认，不是买入提示',meaning:'环境筛选条件齐备，可建立观察名单；首选与备选均未确认个股买点。'},
- waiting:{color:'watch',label:'等待确认',action:'条件未齐，暂不据此新开仓',meaning:'还有条件未满足或未核实，先观察。'},
- blocked:{color:'risk',label:'暂停参与',action:'风控已触发，不按战法新开仓',meaning:'原“防守优先”：风险门槛拦截三大战法，候选股不代表可以买。'},
- unsuitable:{color:'muted',label:'当前不适用',action:'当前不采用该战法',meaning:'没有可验证候选或匹配条件不足。'},
- unavailable:{color:'muted',label:'数据待更新',action:'暂停判断，不作为开仓依据',meaning:'日期、时效或关键统计不完整，无法判断当前适用性。'},
+ research:{color:'positive',label:'当前可用',action:'条件满足，可使用该战法筛选；个股买点未确认',meaning:'所需环境与候选条件满足，可使用战法继续筛选和核验。绿色表示战法适用性，不是已确认买点。'},
+ waiting:{color:'watch',label:'等待确认 · 谨慎使用',action:'有条件待确认或市场分歧，谨慎核验后再使用',meaning:'已有部分数据支持，仍有条件未满足、未确认，或触及一般谨慎项。'},
+ blocked:{color:'risk',label:'不可使用',action:'严重风险门槛触发，暂停使用该战法',meaning:'严重市场风险拦截；即使个别筛选条件满足，仍不可使用。'},
+ unsuitable:{color:'risk',label:'不可使用',action:'已核实的适用条件不满足，当前不采用',meaning:'数据已返回，但缺少可用候选或适用条件明显不足。'},
+ unavailable:{color:'muted',label:'无数据支撑',action:'所需数据不足或失效，暂停判断',meaning:'缺少日期、时效、完整名单或该战法必要证据，不能判断是否适用。'},
 } as const;
 export function marketClock(now=Date.now()){
  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',weekday:'short',hourCycle:'h23'}).formatToParts(new Date(now));
@@ -25,17 +27,11 @@ export function assessTactics(data:Market|null,now=Date.now()){
  const newest=Math.max(0,...(data?.indices||[]).map(q=>quoteEpoch(q.time)||0));
  const wrongDate=!!data?.tradeDate&&data.tradeDate!==clock.date;
  const quoteTimes=(data?.indices||[]).map(q=>quoteEpoch(q.time));
- const delayed=clock.live&&(wrongDate||quoteTimes.length!==4||quoteTimes.some(t=>!t||now-t>180000)||!!data?.poolTimestamp&&now-data.poolTimestamp>180000);
+ const delayed=clock.live&&(wrongDate||quoteTimes.length!==4||quoteTimes.some(t=>!t||now-t>180000||t>now+60000)||!!data?.poolTimestamp&&(now-data.poolTimestamp>180000||data.poolTimestamp>now+60000));
  const opened=data?.stats.opened??null;
  const blast=up!==null&&opened!==null&&up+opened>0?opened/(up+opened):null;
- const defenseReasons:string[]=[];
- if(rate!==null&&rate<.5)defenseReasons.push(`封板率 ${(rate*100).toFixed(1)}% < 50%`);
- if(average!==null&&average<=-2)defenseReasons.push(`指数均值 ${average.toFixed(2)}% ≤ -2%`);
- if(up!==null&&down!==null&&down>=up*.7)defenseReasons.push(`跌停 ${down} 家，达到涨停 ${up} 家的 70% 门槛`);
- if(blast!==null&&blast>=.25)defenseReasons.push(`炸板率 ${(blast*100).toFixed(1)}% ≥ 25%`);
- if(up!==null&&up<40)defenseReasons.push(`涨停 ${up} 家 < 40 家`);
- const defensive=defenseReasons.length>0;
- const phase=!data?'等待数据':defensive?'防守观察':rate!==null&&rate>=.75&&highest>=5?'强势延续':rate!==null&&rate>=.55?'分歧 / 换手观察':'谨慎观察';
+ const risk=marketRisk(data,average),defenseReasons=risk.stops,caution=risk.caution,cautionReasons=risk.warnings;
+ const defensive=risk.defensive;
  const topTheme=data?.themes[0]?.count??0;
  const leader=pool.slice().sort((a,b)=>b.boards-a.boards||b.score-a.score).slice(0,8);
  const quoteSameDay=(s:Stock)=>!!s.quoteDate&&s.quoteDate.slice(0,8)===data?.poolDate?.replaceAll('-','');
@@ -50,16 +46,22 @@ export function assessTactics(data:Market|null,now=Date.now()){
  ];
  const preferred=rate!==null&&rate>=.75&&highest>=5?'leader':'turnover';
  const ranked=tactics.map(t=>({...t,matches:t.checks.filter(c=>c.passed===true).length,known:t.checks.filter(c=>c.passed!==null).length})).sort((a,b)=>b.matches-a.matches||Number(b.id===preferred)-Number(a.id===preferred)||a.name.localeCompare(b.name));
- const dataIssue=!data?'尚未返回行情':!data.tradeDate||wrongDate?'行情日期与当前日期不一致':data.poolDate!==data.tradeDate?'涨停池与统计日期不一致':delayed?'盘中行情延迟或不完整':changes.length!==4?'四大指数未全部返回':(data.indices.some(q=>!quoteEpoch(q.time)||q.time.slice(0,8)!==data.tradeDate!.replaceAll('-','')))?'指数与涨停池日期不一致':rate===null||up===null||down===null||opened===null?'封板率、涨停、跌停或炸板统计不完整':blast!==null&&Math.abs((1-blast)-rate)>.03?'封板率与涨停 / 炸板统计口径不一致':!pool.length?'暂无可验证的非 ST 涨停样本':'';
+ const incompletePool=!!data&&(data.poolTotal==null||data.stocks.length!==data.poolTotal||new Set(data.stocks.map(s=>s.code)).size!==data.poolTotal||data.stocks.some(s=>!/^\d{6}$/.test(s.code)));
+ const invalidStats=!!data&&[up,down,opened].some(n=>n!=null&&(!Number.isFinite(n)||n<0))||rate!=null&&(!Number.isFinite(rate)||rate<0||rate>1);
+ const indexCodes=['sh000001','sz399001','sz399006','sh000300'];
+ const uniqueIndices=new Set((data?.indices||[]).filter(q=>indexCodes.includes(q.code)&&q.price!=null&&Number.isFinite(q.price)&&q.price>0).map(q=>q.code)).size===4;
+ const dataIssue=!data?'尚未返回行情':!data.tradeDate||wrongDate?'行情日期与当前日期不一致':data.providerMode==='snapshot'?'当前为备用快照，等待实时通道恢复':data.poolDate!==data.tradeDate?'涨停池与统计日期不一致':delayed?'盘中行情延迟、不完整或时间异常':changes.length!==4||!uniqueIndices?'四大指数未完整、唯一返回':(data.indices.some(q=>!quoteEpoch(q.time)||q.time.slice(0,8)!==data.tradeDate!.replaceAll('-','')))?'指数与涨停池日期不一致':invalidStats?'统计数值超出合法范围':rate===null||up===null||down===null||opened===null?'封板率、涨停、跌停或炸板统计不完整':blast!==null&&Math.abs((1-blast)-rate)>.03?'封板率与涨停 / 炸板统计口径不一致':incompletePool?'完整涨停名单尚未齐备':'';
+ const phase=dataIssue?'等待有效行情':locateEmotionCycle({valid:true,up,down,blast,highest:pool.length?highest:null,average,severeRisk:defensive,known:0}).name;
  const eligible=ranked.filter(t=>t.candidates.length&&t.checks.every(c=>c.passed===true));
- const best=dataIssue||defensive?null:eligible[0]||null;
+ const best=dataIssue||defensive||caution||!clock.live?null:eligible[0]||null;
  const classified=ranked.map(t=>{
   const missing=t.checks.filter(c=>c.passed===null),failed=t.checks.filter(c=>c.passed===false);
-  const stateId:keyof typeof tacticStates=dataIssue?'unavailable':defensive?'blocked':eligible.some(e=>e.id===t.id)?'research':missing.length?'waiting':!t.candidates.length||t.matches<2?'unsuitable':'waiting';
-  const stateReason=dataIssue|| (defensive?defenseReasons.join('；'):stateId==='research'?'环境筛选条件全部满足；个股承接、成交与具体买点仍需核验。':missing.length?'待核实：'+missing.map(c=>c.label).join('、'):!t.candidates.length?'当前没有可验证的候选。':'未满足：'+failed.map(c=>c.label).join('、'));
+  const essentialMissing=t.id==='turnover'&&t.checks[0].passed===null;
+  const stateId:keyof typeof tacticStates=dataIssue||essentialMissing?'unavailable':defensive?'blocked':!t.candidates.length||t.matches<2?'unsuitable':!clock.live||caution||missing.length||failed.length?'waiting':'research';
+  const stateReason=dataIssue|| (essentialMissing?'缺少同日OHLC、换手率或候选证据':defensive?defenseReasons.join('；'):stateId==='research'?'全部战法适用条件满足；个股买点仍需核验。':!clock.live?'休市参考，下一交易时段重新确认':caution?cautionReasons.join('；'):missing.length?'待核实：'+missing.map(c=>c.label).join('、'):!t.candidates.length?'数据已返回，但没有匹配候选。':'未满足：'+failed.map(c=>c.label).join('、'));
   return {...t,stateId,state:tacticStates[stateId],stateReason};
  });
  const status=classified.some(t=>t.stateId==='research')?tacticStates.research:dataIssue?tacticStates.unavailable:defensive?tacticStates.blocked:classified.some(t=>t.stateId==='waiting')?tacticStates.waiting:tacticStates.unsuitable;
  const snapshotLabel=!clock.live?`当前${clock.label}，按 ${data?.tradeDate||'最近'} 快照复盘，下一交易时段再验证。`:'';
- return {clock,phase,delayed,defensive,defenseReasons,dataIssue,status,highest,average,newest:newest||null,primary:best?.name||'观望 / 等待验证',primaryId:best?.id||null,tactics:classified,context:[dataIssue?dataIssue+'，暂停适用性判断。':defensive?defenseReasons.join('；')+'。风控优先于单项匹配，不按战法新开仓。':best?'当前更适合研究'+best.name+'；仅是环境适配，尚未确认个股买点。':'暂无筛选条件全部满足的战法，等待确认。',snapshotLabel].filter(Boolean).join(' ')};
+ return {clock,phase,delayed,defensive,defenseReasons,caution,cautionReasons,riskLevel:risk.level,dataIssue,status,highest,average,newest:newest||null,primary:best?.name||'观望 / 等待验证',primaryId:best?.id||null,tactics:classified,context:[dataIssue?dataIssue+'，暂停适用性判断。':defensive?defenseReasons.join('；')+'。暂停使用战法。':caution?cautionReasons.join('；')+'。逐项核验战法，谨慎使用。':best?'当前适用'+best.name+'；个股买点仍需核验。':'尚未满足全部适用条件，等待确认。',snapshotLabel].filter(Boolean).join(' ')};
 }
