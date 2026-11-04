@@ -1,6 +1,6 @@
 import type {Market} from './market-types';
 import {hasMarketData} from './market-state.ts';
-const provider=(m:Market|null)=>hasMarketData(m)&&m.sources.some(s=>s.id==='fuyao'&&(s.status==='ok'||s.status==='partial'))&&!!m.poolDate;
+const provider=(m:Market|null)=>hasMarketData(m)&&m.sources.some(s=>s.id==='fuyao'&&(!s.availability||s.availability==='active')&&(s.status==='ok'||s.status==='partial'))&&!!m.poolDate;
 const order=(a:Market,b:Market)=>String(a.poolDate||'').localeCompare(b.poolDate||'')||((a.poolTimestamp??0)-(b.poolTimestamp??0));
 const publicPool=(m:Market|null)=>hasMarketData(m)&&m.providerMode!=='snapshot'&&!!m.poolDate&&m.poolDate===m.tradeDate&&m.poolTotal!=null&&new Set(m.stocks.map(s=>s.code)).size===m.poolTotal&&m.sources.some(s=>s.id==='em-pool'&&(s.status==='ok'||s.status==='partial'));
 

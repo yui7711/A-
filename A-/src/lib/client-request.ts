@@ -2,9 +2,8 @@ import type {History,Market} from './market-types';
 import {requestJSON as httpJSON,fetchSectorFallback} from './http-client';
 import {createPublicDataClient} from './public-data';
 import {fetchPublicJSON} from './public-transport';
-import {readLiveMarket} from './live-reader';
+import {createMultiSourceReader,firstAvailable} from './multi-source';
 import {createPublicResearchClient} from './public-research';
-import {selectMarket} from './market-router';
 import {getDataRoute} from './connection-preferences';
 export {fetchSectorFallback};
 
@@ -59,16 +58,18 @@ export async function loadSnapshot():Promise<Market|null>{
 const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 function publicRoute(){return getDataRoute(k=>localStorage.getItem(k))==='public';}
+const multiSource=createMultiSourceReader({live:f=>proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
 async function getMarket(force:boolean){
- if(publicRoute()){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端',true);}
- return readLiveMarket(force,{live:(f,signal)=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':''),18000,signal),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
+ const data=await multiSource(force,publicRoute()?'public':'auto');
+ return data.providerMode==='proxy'&&!data.research?publicResearch(data,await loadSnapshot()):data;
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){
- const id=code+mode;try{let h:History;if(publicRoute())h=await client.history(code,mode);else try{h=await proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),2500);if(!h.points?.length)throw Error('空图表');}catch{h=await client.history(code,mode);}chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
+ const id=code+mode;try{const jobs=[()=>client.history(code,mode),()=>proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),7000)];const h=await firstAvailable(publicRoute()?jobs:jobs.reverse(),h=>!!h.points?.length);chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
 }
 async function getWatchQuotes(codes:string){
- try{if(publicRoute())throw Error('使用公开直连');const result=await proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),2500);if(!result.quotes?.length)throw Error('报价未返回');return result;}catch{return {quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))};}
+ const jobs=[async()=>({quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))}),()=>proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),7000)];
+ return firstAvailable(publicRoute()?jobs:jobs.reverse(),r=>!!r.quotes?.length);
 }
 export async function requestJSON<T>(url:string,init:RequestInit={},options:{timeoutMs?:number;retries?:number}={}):Promise<T>{
  if(!url.startsWith('/api/'))return httpJSON<T>(url,init,options);
