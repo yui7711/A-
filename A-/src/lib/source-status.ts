@@ -1,6 +1,7 @@
 import type {Source} from './market-types';
 export function sourceLabel(s:Source){
  if(s.id==='tdx')return '本机文件导入';
+ if(s.id==='fuyao'&&s.mode==='fallback'&&s.status==='missing')return '未使用 · 直连模式';
  if(s.mode==='snapshot')return '备用收盘快照';
  if(s.errorCode==='auth')return 'Key 无效';
  if(s.errorCode==='permission')return '接口权限不足';

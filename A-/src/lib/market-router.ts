@@ -5,7 +5,7 @@ const order=(a:Market,b:Market)=>String(a.poolDate||'').localeCompare(b.poolDate
 const publicPool=(m:Market|null)=>hasMarketData(m)&&m.providerMode!=='snapshot'&&!!m.poolDate&&m.poolDate===m.tradeDate&&m.poolTotal!=null&&new Set(m.stocks.map(s=>s.code)).size===m.poolTotal&&m.sources.some(s=>s.id==='em-pool'&&(s.status==='ok'||s.status==='partial'));
 
 /** Keep a pool and its statistics together. Newer quotes never re-date an old pool. */
-export function selectMarket(proxy:Market|null,direct:Market|null,snapshot:Market|null,failure='实时通道暂不可用，尚未验证同花顺 Key 状态'):Market{
+export function selectMarket(proxy:Market|null,direct:Market|null,snapshot:Market|null,failure='实时通道暂不可用，尚未验证同花顺 Key 状态',manual=false):Market{
  // A connected response is authoritative, including a healthy empty opening pool or explicitly missing statistics.
  // Never force it behind a newer-dated build snapshot; its date can be a response assembly date from before the fix.
  if(proxy&&provider(proxy))return {...proxy,providerMode:'proxy',notice:proxy.notice||'实时接口已连接 · 每 5 秒自动刷新，以上游行情时间为准。'};
@@ -15,7 +15,7 @@ export function selectMarket(proxy:Market|null,direct:Market|null,snapshot:Marke
  // Keep pool/statistics/evidence together; do not carry THS historical themes into an EM pool.
  if(direct&&publicPool(direct)&&(!best||String(direct.poolDate)>=String(best.poolDate))){
   return {...direct,providerMode:'public',notice:'已切换东方财富 / 腾讯实时直连 · 每 5 秒刷新，不依赖本站行情服务域名。涨停池未提供秒级时间，按实际交易日和请求时点显示。',
-   sources:[{id:'fuyao',name:'同花顺兼容源 · FUYAO（第三方）',status:'error',message:failure+'；行情已由东方财富 / 腾讯独立通道更新，未将旧快照标为实时。',date:null,url:'https://fuyao.aicubes.cn'},...direct.sources.filter(s=>s.id!=='fuyao')]};
+   sources:[{id:'fuyao',name:'同花顺兼容源 · FUYAO（第三方）',status:manual?'missing':'error',...(manual?{mode:'fallback' as const}:{}),message:failure+'；行情已由东方财富 / 腾讯独立通道更新，未将旧快照标为实时。',date:null,url:'https://fuyao.aicubes.cn'},...direct.sources.filter(s=>s.id!=='fuyao')]};
  }
  if(best&&(!direct||String(best.poolDate)>=String(direct.poolDate||''))){
   return {...best,providerMode:'snapshot',cached:true,servedAt:new Date().toISOString(),

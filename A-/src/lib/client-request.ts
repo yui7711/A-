@@ -59,7 +59,7 @@ const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 function publicRoute(){try{return JSON.parse(localStorage.getItem('obsidian-data-route-v1')||'null')==='public';}catch{return false;}}
 async function getMarket(force:boolean){
- if(publicRoute()){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端');}
+ if(publicRoute()){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端',true);}
  return readLiveMarket(force,{live:(f,signal)=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':''),18000,signal),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
 }
 const chartCache=new Map<string,History>();
