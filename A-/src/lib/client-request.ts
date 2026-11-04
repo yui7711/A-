@@ -57,17 +57,17 @@ export async function loadSnapshot():Promise<Market|null>{
 }
 const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
+function publicRoute(){try{return JSON.parse(localStorage.getItem('obsidian-data-route-v1')||'null')==='public';}catch{return false;}}
 async function getMarket(force:boolean){
- let directOnly=false;try{directOnly=JSON.parse(localStorage.getItem('obsidian-data-route-v1')||'null')==='public';}catch{}
- if(directOnly){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端');}
+ if(publicRoute()){const snapshot=await loadSnapshot();const direct=await publicResearch(await client.market(force,snapshot),snapshot);return selectMarket(null,direct,snapshot,'已选择公开行情直连，跳过本站服务端');}
  return readLiveMarket(force,{live:(f,signal)=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':''),18000,signal),snapshot:loadSnapshot,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){
- const id=code+mode;try{let h:History;try{h=await proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),10000);if(!h.points?.length)throw Error('空图表');}catch{h=await client.history(code,mode);}chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
+ const id=code+mode;try{let h:History;if(publicRoute())h=await client.history(code,mode);else try{h=await proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),2500);if(!h.points?.length)throw Error('空图表');}catch{h=await client.history(code,mode);}chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
 }
 async function getWatchQuotes(codes:string){
- try{const result=await proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),7000);if(!result.quotes?.length)throw Error('报价未返回');return result;}catch{return {quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))};}
+ try{if(publicRoute())throw Error('使用公开直连');const result=await proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),2500);if(!result.quotes?.length)throw Error('报价未返回');return result;}catch{return {quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))};}
 }
 export async function requestJSON<T>(url:string,init:RequestInit={},options:{timeoutMs?:number;retries?:number}={}):Promise<T>{
  if(!url.startsWith('/api/'))return httpJSON<T>(url,init,options);
