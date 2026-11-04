@@ -2,7 +2,7 @@ import type {History,Market} from './market-types';
 import {requestJSON as httpJSON,fetchSectorFallback} from './http-client';
 import {createPublicDataClient} from './public-data';
 import {fetchPublicJSON} from './public-transport';
-import {selectMarket} from './market-router';
+import {readLiveMarket} from './live-reader';
 export {fetchSectorFallback};
 
 const globals=window as unknown as Record<string,unknown>;
@@ -47,24 +47,24 @@ export async function loadSnapshot():Promise<Market|null>{
   if(!Array.isArray(j.stocks)||!Array.isArray(j.indices)||!Array.isArray(j.sources))return null;snapshot=j;return j;
  }).catch(()=>snapshot).finally(()=>{snapshotPromise=null;snapshotCheckedAt=Date.now();});return snapshotPromise;
 }
+const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
+const proxyJSON=<T,>(path:string,timeoutMs=18000)=>httpJSON<T>(liveURL+path,{credentials:'omit'},{timeoutMs,retries:0});
 async function getMarket(force:boolean){
- const stored=await loadSnapshot();
- // Fixed public-data endpoint: no API key, cookies, account details or browser credentials are sent.
- const directJob=client.market(force,stored).catch(()=>null);
- const proxy=await httpJSON<Market>('https://obsidian-stock-radar.d69m29kwvj.chatgpt.site/api/market'+(force?'?fresh=1':''),{credentials:'omit'},{timeoutMs:10000,retries:0}).catch(()=>null);
- if(proxy?.sources?.some(s=>s.id==='fuyao'&&(s.status==='ok'||s.status==='partial'))&&proxy.poolDate&&String(proxy.poolDate)>=String(stored?.poolDate||''))return selectMarket(proxy,null,stored);
- return selectMarket(proxy,await directJob,stored);
+ return readLiveMarket(force,{live:f=>proxyJSON<Market>('/api/market'+(f?'?fresh=1':'')),snapshot:loadSnapshot,publicMarket:(f,s)=>client.market(f,s)});
 }
 const chartCache=new Map<string,History>();
 async function chart(code:string,mode:string){
- const id=code+mode;try{const h=await client.history(code,mode);chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
+ const id=code+mode;try{let h:History;try{h=await proxyJSON<History>('/api/history?code='+encodeURIComponent(code)+'&mode='+encodeURIComponent(mode),10000);if(!h.points?.length)throw Error('空图表');}catch{h=await client.history(code,mode);}chartCache.set(id,h);return h;}catch(e){const old=chartCache.get(id);if(old)return {...old,stale:true,notice:'保留本次页面中最近成功的真实图表'};throw e;}
+}
+async function getWatchQuotes(codes:string){
+ try{const result=await proxyJSON<{quotes:unknown[]}>('/api/quotes?codes='+encodeURIComponent(codes),7000);if(!result.quotes?.length)throw Error('报价未返回');return result;}catch{return {quotes:await client.quotes(codes.split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c))};}
 }
 export async function requestJSON<T>(url:string,init:RequestInit={},options:{timeoutMs?:number;retries?:number}={}):Promise<T>{
  if(!url.startsWith('/api/'))return httpJSON<T>(url,init,options);
  if(new Headers(init.headers).has('x-provider-key'))throw new Error('GitHub Pages 版不向公开前端传递服务端 Key，请清除会话覆盖 Key。');
  // Parse routes independently of Windows file:// drive letters. This base is never requested.
  const parsed=new URL(url,'https://radar.invalid/'),path=parsed.pathname;
- const operation=path==='/api/market'?getMarket(parsed.searchParams.get('fresh')==='1'):path==='/api/history'?chart(parsed.searchParams.get('code')||'',parsed.searchParams.get('mode')||'day'):path==='/api/quotes'?client.quotes((parsed.searchParams.get('codes')||'').split(',').filter(c=>/^\d{6}$/.test(c)).map(c=>(/^[569]/.test(c)?'sh':/^[48]/.test(c)?'bj':'sz')+c)).then(quotes=>({quotes})):Promise.reject(new Error('静态站点没有此数据接口'));
+ const operation=path==='/api/market'?getMarket(parsed.searchParams.get('fresh')==='1'):path==='/api/history'?chart(parsed.searchParams.get('code')||'',parsed.searchParams.get('mode')||'day'):path==='/api/quotes'?getWatchQuotes(parsed.searchParams.get('codes')||''):Promise.reject(new Error('静态站点没有此数据接口'));
  const controller=init.signal;
  return new Promise<T>((resolve,reject)=>{
   const finish=()=>{clearTimeout(timer);controller?.removeEventListener('abort',abort);};
