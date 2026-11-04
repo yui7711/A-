@@ -1,6 +1,7 @@
 import type {Market,History,Quote,Source,Stock} from './market-types';
 import {mapEMPool,num,parseTencent,shDate,symbol} from './market-core.ts';
 import {tencentHistory} from './history-normalize.ts';
+import {loadMinuteHistory} from './minute-history.ts';
 
 export type Transport=(url:string,options?:{kind?:'json'|'quotes'|'jsonp';method?:string;body?:string})=>Promise<any>;
 const INDEX_CODES=['sh000001','sz399001','sz399006','sh000300'];
@@ -81,9 +82,7 @@ export function createPublicDataClient(transport:Transport){
  async function history(code:string,mode='day'):Promise<History>{
   if(!/^(sh|sz|bj)\d{6}$/.test(code))throw new Error('股票代码不合法');
   if(mode==='minute'){
-   const j=await transport('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+code),d=j?.data?.[code]?.data;
-   const points=(d?.data||[]).map((s:string)=>{const f=s.split(' ');return {time:f[0].replace(/(\d{2})(\d{2})/,'$1:$2'),price:Number(f[1]),volume:Number(f[2])};}).filter((p:any)=>p.price>0&&Number.isFinite(p.price));
-   if(!points.length)throw new Error('分时暂未返回真实价格');return {code,name:code,source:'腾讯 · 分时',date:dateString(d.date),points,fetchedAt:new Date().toISOString()};
+   return {...await loadMinuteHistory(code,url=>transport(url)),fetchedAt:new Date().toISOString()};
   }
   const j=await transport('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+code+',day,,,60,qfq');
   const h=tencentHistory(code,j);if(!h.points.length)throw new Error('日线暂未返回真实价格');return {...h,fetchedAt:new Date().toISOString()};
