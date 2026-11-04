@@ -69,3 +69,5 @@
 .tactic-state-guide .focus-pill{white-space:normal;font-size:9px}.tactic-state-guide p{font-size:9px;line-height:1.9;color:var(--secondary);margin:8px 0 0}
 @media(max-width:1150px){.tactic-state-guide{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.tactic-heading{min-width:0;flex-basis:100%}.tactic-action-banner{margin-left:18px;margin-right:18px;flex-wrap:wrap}.tactic-action-banner>small{margin-left:29px;max-width:none}.tactic-action-banner strong{font-size:12px}.tactic-state-guide{margin-left:18px;margin-right:18px;gap:14px 10px}.tactic-state-guide .focus-pill{font-size:8px}.tactic-card-title{flex-wrap:wrap}}
+
+.dimension-source{display:block;margin-top:8px;font-size:10px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
