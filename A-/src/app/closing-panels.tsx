@@ -1,0 +1,30 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {ArrowRight,ShieldAlert,Target} from 'lucide-react';
+import type {Market} from '@/lib/market-types';
+import {buildClosingSignals,recordSealSnapshot,sanitizeSnapshots,SEAL_STORAGE,type SealSnapshot} from '@/lib/closing-signals';
+const cash=(n:number|null)=>n==null?'—':(n/1e8).toFixed(2)+'亿';
+const time=(n:number)=>Number.isFinite(n)?new Date(n).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'待时间';
+const pct=(n:number|null)=>n==null?'—':(n>=0?'+':'')+(n*100).toFixed(1)+'%';
+export function useSealObservations(data:Market|null,now:number){
+ const [records,setRecords]=useState<SealSnapshot[]>([]),[ready,setReady]=useState(false);
+ useEffect(()=>{try{setRecords(sanitizeSnapshots(JSON.parse(localStorage.getItem(SEAL_STORAGE)||'[]')));}catch{}setReady(true);},[]);
+ useEffect(()=>{if(!ready)return;setRecords(old=>recordSealSnapshot(old,data,now));},[ready,data,now]);
+ useEffect(()=>{if(ready)try{localStorage.setItem(SEAL_STORAGE,JSON.stringify(records));}catch{}},[ready,records]);
+ return records;
+}
+type Props={data:Market|null;now:number;records:SealSnapshot[];onStock:(code:string,name:string)=>void};
+export function ClosingWarningPanel({data,now,records,onStock}:Props){
+ const r=buildClosingSignals(data,records,now);
+ return <section className="panel closing-panel" aria-label="尾盘封单变化核心警示"><div className="panel-heading"><div><span className="section-step">03 · 先核验核心警示</span><h2>辅助信号 · 尾盘封单变化 <span className="focus-pill focus-watch">核心警示</span></h2><p>对比封单变化与当前承接，避免只看涨停数量或回封率</p></div><ShieldAlert size={20} className="blue"/></div>
+ <div className={'closing-callout focus-'+(!r.valid?'muted':r.riskCount?'risk':'watch')}><strong>{r.title}</strong><p>{r.divergence?`涨停较午盘增加 ${r.growth} 家，但高标出现封单衰减或极薄警示；数量回升尚不能确认质量修复。`:r.riskCount&&!r.hasComparison?'当前封成比已触及核心警示；午盘对照尚未齐备，本轮不判定封单衰减。警示不代表次日必然断板。':r.hasComparison?'按同日、同源午盘快照计算变化，警示是研究门槛，不代表次日必然断板。':'午盘采样窗口为11:25–11:35，尾盘对照从14:30开始。需页面在窗口内取得有效行情；新电脑或未采集时不补造历史。'}</p></div>
+ <div className="closing-meta"><span>{data?.tradeDate||'待交易日'} · {r.source||'待来源'}</span><span>午盘：{r.noon?time(r.noon.at)+(r.noon.basis==='observed'?' 浏览器观测':' 源时间'):'未采集'}</span><span>本轮：{time(r.at)} · {data?.poolTimestamp?'源时间':'请求观测时间，非池更新时间'}</span></div>
+ <div className="closing-table-wrap"><table className="closing-table"><thead><tr><th>高标 / 连板</th><th>午盘封单</th><th>当前封单 / 变化</th><th>封成比</th><th>判定与依据</th></tr></thead><tbody>{r.high.slice(0,8).map(row=><tr key={row.stock.code}><td><button className="closing-stock" onClick={()=>onStock(row.stock.code,row.stock.name)}><strong>{row.stock.name}<ArrowRight size={12}/></strong><small>{row.stock.code} · {row.stock.boards} 板</small></button></td><td>{cash(row.prior)}</td><td>{cash(row.stock.seal)}<small className={'closing-change focus-'+row.tone}>{pct(row.change)}</small></td><td>{row.ratio==null?'—':row.ratio.toFixed(3)}<small>封单 ÷ 当日成交额</small></td><td><div className="closing-tags">{row.signals.map(s=><span key={s.label} className={'focus-pill focus-'+(r.valid?s.tone:'muted')}>{s.label}</span>)}</div><p>{row.signals.map(s=>s.reason).join('；')}{!r.valid?'；行情完整性未通过，仅列原始值。':''}</p></td></tr>)}</tbody></table>{!r.high.length&&<p className="research-empty">当前无二板及以上观察样本；首板不冒充高标。</p>}</div>
+ {!!r.disappeared.length&&<p className="closing-absence focus-watch">午盘样本 {r.disappeared.map(s=>s.name).join('、')} 当前未在涨停池，需核验报价与炸板池；不将消失记录的封单直接填为0。</p>}
+ <details className="research-method"><summary>判定说明 · 每个信号怎样触发？</summary><div className="closing-rule-grid"><p><b>封单变化</b>（当前封单÷午盘封单−1）×100%；减少≥70%标红，30%–70%标黄。仅同日同源且午盘封单&gt;0、间隔≥30分钟、尾盘14:30后计算。</p><p><b>封成比</b>当前封单金额÷当日累计成交额，均以元计；&lt;0.03标红，0.03–0.10标黄。不是买卖资金净流入，也不是封单占流通市值。</p><p><b>交叉警示</b>开板≥3次、换手≥35%分别标黄；0次开板仍需看封单是否衰减。回封率走高不能抵消封单走弱。</p><p><b>颜色与缺失</b>红＝触发核心警示，黄＝谨慎核验，灰＝证据不足；绿仅表示四项结构均有数据且未触发门槛，不是可以买。缺成交额不填0；日内最大封单不用作午盘基准。</p></div><p>这些阈值为本站可解释研究规则，未经收益回测。参考页的固定日期个股结论、断板概率和确定性预测不随页面移植。快照仅保留在本浏览器，行情源切换后不跨源比较。</p></details></section>;
+}
+export function ClosingWatchPanel({data,now,records,onStock}:Props){
+ const r=buildClosingSignals(data,records,now),closed=Number.isFinite(r.at)&&new Date(r.at+8*3600000).getUTCHours()>=15;
+ const rows=[...r.rows].sort((a,b)=>b.stock.boards-a.stock.boards||b.stock.score-a.stock.score).slice(0,10);
+ return <section className="panel closing-panel" aria-label="高标个股与明日关注"><div className="panel-heading"><div><span className="section-step">05 · 把个股线索写成验证条件</span><h2>高标个股与明日关注 <span className="sub-badge">{closed?'收盘观测':'盘中跟踪'}</span></h2><p>按连板高度、观察分排序 · 当前池含风险样本，供核验与排除</p></div><Target size={19} className="blue"/></div><div className="closing-table-wrap"><table className="closing-table watch-signals"><thead><tr><th>个股 / 梯队</th><th>当日结构</th><th>当前信号</th><th>下一交易日需确认</th></tr></thead><tbody>{rows.map(row=>{const s=row.stock;return <tr key={s.code}><td><button className="closing-stock" onClick={()=>onStock(s.code,s.name)}><strong>{s.name}<ArrowRight size={12}/></strong><small>{s.code} · {s.boards} → {s.boards+1} 板观察</small></button><small>{s.themes.slice(0,2).join(' / ')||'题材待补充'}</small></td><td><span>开板 {s.openTimes??'—'} 次 · 换手 {s.turnover==null?'—':s.turnover.toFixed(1)+'%'}</span><small>封单 {cash(s.seal)} / 成交 {cash(s.amount)}</small><small>封成比 {row.ratio==null?'—':row.ratio.toFixed(3)}</small></td><td><div className="closing-tags">{row.signals.map(t=><span key={t.label} className={'focus-pill focus-'+(r.valid?t.tone:'muted')}>{t.label}</span>)}</div><small>{row.change==null?'午盘对照未齐':`较午盘 ${pct(row.change)}`}</small></td><td><p>{!r.valid?'先恢复完整同日行情，再评估个股。':row.tone==='risk'?'先排查封单衰减与薄封是否延续；风险未解除，列入回避核验。':row.tone==='watch'?'核验竞价承接、回封质量与换手分歧是否改善，未确认前保持谨慎。':row.tone==='muted'?'补齐午盘对照、成交额、开板与换手；证据不足时不升级为可用信号。':'观察封单能否维持、开板是否增加，以及所在主线能否形成梯队跟随。'}</p><small>还需重验情绪环境与三大战法适用状态。</small></td></tr>;})}</tbody></table>{!rows.length&&<p className="research-empty">等待二板及以上真实样本，不预设明日个股名单。</p>}</div><div className="closing-footnote">明日指下一交易日，需重新取数确认；{data?.tradeDate||'当前'} 快照不代表次日竞价、晋级或买点。个股行可点击查看真实行情。</div></section>;
+}

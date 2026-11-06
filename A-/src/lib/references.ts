@@ -56,4 +56,12 @@ export const references = [
     adopted: "防重复刷新、陈旧数据提示和风险详情展示。",
     status: "已核对 app、API、雷达、风险与七步复盘模块；预设行业文字不作最新新闻。",
   },
+  {
+    id: 7,
+    title: "情绪流战法·2026-11-06 收盘参考",
+    url: "https://p3-flow-sign.byteimg.com/tos-cn-i-ik7evvg4ik/rc/pc/super_tool/aeec51ec8e3e4f5faa106937e3835391.html?lk3s=8e244e95&rcl=02179394843037726050340cd6011007bff00000000005fd81dbe&rrcfp=f512b60b&x-expires=1795245258&x-signature=5iov9qzQ8n0jEYzxmgI4O47RVRc%3D",
+    strengths: ["将午盘至收盘封单变化与封成比并列，提醒数量修复与质量背离", "联合开板次数、换手和题材梯队解释个股信号", "把高标结构转换为下一交易日待验证条件"],
+    adopted: "尾盘封单核心警示、逐项判定说明，以及高标个股与明日关注表。",
+    status: "已读取完整HTML；固定日期报告仅作结构参考。本站阈值单独定义，午盘快照需真实采集，不复制原页确定性预测。",
+  },
 ];
