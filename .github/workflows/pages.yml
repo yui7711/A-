@@ -4,20 +4,68 @@ on:
     branches: [main, master]
     paths: ['A-/**', '.github/workflows/pages.yml']
   workflow_dispatch:
+    inputs:
+      collection_only:
+        description: '只采集共享封单，不构建或发布网站'
+        type: boolean
+        default: false
   schedule:
     - cron: '10 1 * * 1-5'
+    - cron: '18 3 * * 1-5'
+    - cron: '38 3 * * 1-5'
+    - cron: '48 6 * * 1-5'
+    - cron: '8 7 * * 1-5'
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency:
   group: github-pages
   cancel-in-progress: false
 jobs:
+  collect-seals:
+    if: (github.event_name == 'schedule' && github.event.schedule != '10 1 * * 1-5') || (github.event_name == 'workflow_dispatch' && inputs.collection_only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Collect shared seals without a visitor
+        id: capture
+        continue-on-error: true
+        run: node --experimental-strip-types A-/scripts/collect-seals.mjs
+        env:
+          FUYAO_API_KEY: ${{ secrets.FUYAO_API_KEY }}
+          SEAL_TARGET: ${{ github.event.schedule == '18 3 * * 1-5' && 'noon' || github.event.schedule == '48 6 * * 1-5' && 'late' || '' }}
+      - name: Persist shared data without republishing the website
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f A-/public/data/seal-snapshots.json ]; then
+            git add A-/public/data/seal-snapshots.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update shared seal observations [skip ci]"
+              git pull --rebase origin main
+              git push origin HEAD:main
+            fi
+          fi
+      - name: Report unavailable capture
+        if: steps.capture.outcome == 'failure'
+        run: exit 1
   build:
+    if: (github.event_name != 'schedule' || github.event.schedule == '10 1 * * 1-5') && !inputs.collection_only
+    timeout-minutes: 90
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,6 +75,25 @@ jobs:
         working-directory: A-
       - run: npm test
         working-directory: A-
+      - name: Collect shared noon and closing seals
+        run: node --experimental-strip-types scripts/collect-seals.mjs
+        working-directory: A-
+        continue-on-error: true
+        env:
+          FUYAO_API_KEY: ${{ secrets.FUYAO_API_KEY }}
+          SEAL_TARGET: ${{ github.event.schedule == '18 3 * * 1-5' && 'noon' || github.event.schedule == '48 6 * * 1-5' && 'late' || '' }}
+      - name: Persist public seal archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f A-/public/data/seal-snapshots.json ]; then
+            git add A-/public/data/seal-snapshots.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update shared seal observations [skip ci]"
+              git pull --rebase origin main
+              git push origin HEAD:main
+            fi
+          fi
       - run: npm run collect
         working-directory: A-
         env:

@@ -1,7 +1,7 @@
 import type {Market,Stock} from './market-types';
 import {assessTactics,marketClock,quoteEpoch} from './tactics.ts';
 
-export type SealSnapshot={date:string;source:string;at:number;basis:'source'|'observed';slot:'noon'|'late';stocks:{code:string;name:string;boards:number;seal:number|null;isST:boolean}[];up:number|null};
+export type SealSnapshot={origin?:'cloud'|'browser';collectedAt?:string;market?:Market;date:string;source:string;at:number;basis:'source'|'observed';slot:'noon'|'late';stocks:{code:string;name:string;boards:number;seal:number|null;isST:boolean}[];up:number|null};
 export const SEAL_STORAGE='obsidian-seal-observations-v1';
 const finite=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
 const minute=(at:number)=>{const d=new Date(at+8*3600000);return d.getUTCHours()*60+d.getUTCMinutes();};
@@ -9,7 +9,7 @@ export const sealSource=(d:Market)=>d.stocks.every(s=>s.source.startsWith('FUYAO
 function complete(d:Market){return !!d.tradeDate&&d.tradeDate===d.poolDate&&d.poolTotal!=null&&d.stocks.length===d.poolTotal&&new Set(d.stocks.map(s=>s.code)).size===d.poolTotal&&d.stocks.every(s=>/^\d{6}$/.test(s.code));}
 export function sanitizeSnapshots(value:unknown):SealSnapshot[]{
  if(!Array.isArray(value))return [];
- return value.filter((v):v is SealSnapshot=>v&&/^\d{4}-\d{2}-\d{2}$/.test(v.date)&&['FUYAO','东方财富'].includes(v.source)&&finite(v.at)&&marketClock(v.at).date===v.date&&['source','observed'].includes(v.basis)&&['noon','late'].includes(v.slot)&&Array.isArray(v.stocks)&&v.stocks.length<=1000&&v.stocks.every((s:any)=>/^\d{6}$/.test(s.code)&&typeof s.name==='string'&&finite(s.boards)&&(s.seal===null||finite(s.seal))&&typeof s.isST==='boolean')).slice(-12);
+ return value.filter((v):v is SealSnapshot=>v&&/^\d{4}-\d{2}-\d{2}$/.test(v.date)&&['FUYAO','东方财富'].includes(v.source)&&finite(v.at)&&marketClock(v.at).date===v.date&&['source','observed'].includes(v.basis)&&['noon','late'].includes(v.slot)&&Array.isArray(v.stocks)&&v.stocks.length<=1000&&v.stocks.every((s:any)=>/^\d{6}$/.test(s.code)&&typeof s.name==='string'&&finite(s.boards)&&(s.seal===null||finite(s.seal))&&typeof s.isST==='boolean')).slice(-40);
 }
 /** Store actual browser observations only; never infer noon from a daily maximum. */
 export function recordSealSnapshot(records:SealSnapshot[],data:Market|null,now:number):SealSnapshot[]{
@@ -44,15 +44,15 @@ export function classifySeal(s:Stock,change:number|null,ratio:number|null,valid:
 }
 export function buildClosingSignals(data:Market|null,records:SealSnapshot[],now:number){
  const source=data?sealSource(data):null,valid=!!data&&complete(data)&&!assessTactics(data,now).dataIssue;
- const noon=records.find(s=>s.date===data?.tradeDate&&s.source===source&&s.slot==='noon');
+ const noon=records.slice().sort((a,b)=>Number(b.origin==='cloud')-Number(a.origin==='cloud')||b.at-a.at).find(s=>s.date===data?.tradeDate&&s.source===source&&s.slot==='noon');
  const at=data?.poolTimestamp??Date.parse(data?.fetchedAt||''),hasComparison=!!noon&&finite(at)&&at-noon.at>=30*60000&&minute(at)>=870;
  const pool=(data?.stocks||[]).filter(s=>!s.isST),highest=pool.length?Math.max(...pool.map(s=>s.boards)):0;
  const rows=pool.filter(s=>s.boards>=2).map(s=>{
-  const prior=hasComparison?noon!.stocks.find(p=>p.code===s.code):undefined;
-  const change=prior&&finite(prior.seal)&&prior.seal>0&&finite(s.seal)?s.seal/prior.seal-1:null;
+  const prior=noon?.stocks.find(p=>p.code===s.code);
+  const change=hasComparison&&prior&&finite(prior.seal)&&prior.seal>0&&finite(s.seal)?s.seal/prior.seal-1:null;
   const ratio=finite(s.seal)&&finite(s.amount)&&s.amount>0?s.seal/s.amount:null;
   const result=classifySeal(s,valid?change:null,valid?ratio:null,valid);
-  return {stock:s,prior:prior?.seal??null,change:valid?change:null,ratio:valid?ratio:null,...result};
+  return {stock:s,prior:prior?.seal??null,inNoon:!!prior,change:valid?change:null,ratio:valid?ratio:null,...result};
  }).sort((a,b)=>({risk:0,watch:1,positive:2,muted:3}[a.tone]-{risk:0,watch:1,positive:2,muted:3}[b.tone])||b.stock.boards-a.stock.boards||b.stock.score-a.stock.score);
  const high=rows.filter(r=>r.stock.boards>=Math.max(2,Math.min(3,highest))),riskCount=high.filter(r=>r.tone==='risk').length;
  const disappeared=hasComparison?noon!.stocks.filter(s=>!s.isST&&s.boards>=2&&!pool.some(c=>c.code===s.code)):[];

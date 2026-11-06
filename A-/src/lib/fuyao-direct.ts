@@ -1,3 +1,4 @@
+import {createDeviceKeyStore} from './fuyao-key-store.ts';
 import type {Market,Quote} from './market-types';
 import {loadLiveMarket} from './live-market-core.ts';
 import {num,shDate} from './market-core.ts';
@@ -48,6 +49,22 @@ export function createFuyaoDirect(request:Request=fetch,now=Date.now){
 const client=createFuyaoDirect();let sessionKey='',generation=0,pending:Promise<Market>|null=null;
 export function hasFuyaoDirect(){return !!sessionKey;}
 export function fuyaoDirectRevision(){return generation;}
-export async function enableFuyaoDirect(value:string){const key=value.trim(),verification=await client.verify(key);sessionKey=key;generation++;pending=null;return verification;}
-export function disableFuyaoDirect(){sessionKey='';generation++;pending=null;}
+export async function enableFuyaoDirect(value:string,remember=false){const key=value.trim(),revision=generation,verification=await client.verify(key);if(revision!==generation)throw Error('连接设置已变更，请重新验证');sessionKey=key;generation++;pending=null;let storageWarning='';try{if(remember){const store=deviceStore();if(!store)throw Error('浏览器禁止保存；当前页面仍可连接');store.save(key);}else deviceStore()?.clear();}catch(e){storageWarning=e instanceof Error?e.message:'本机保存失败';}changed();return {...verification,storageWarning};}
+export function disableFuyaoDirect(){sessionKey='';generation++;pending=null;changed();}
 export function readFuyaoDirect(){if(!sessionKey)return Promise.reject(Error('尚未启用本页直连'));if(pending)return pending;const rev=generation;const job=client.market(sessionKey).then(m=>{if(rev!==generation)throw Error('本页直连设置已变更');return m;}).finally(()=>{if(pending===job)pending=null;});pending=job;return job;}
+
+const listeners=new Set<()=>void>();
+let restoring:Promise<boolean>|null=null,restoreMessage='';
+function deviceStore(){try{return typeof window==='undefined'?null:createDeviceKeyStore(window.localStorage);}catch{return null;}}
+function changed(){listeners.forEach(fn=>fn());}
+export function subscribeFuyaoDirect(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn);};}
+export function hasRememberedFuyaoKey(){return !!deviceStore()?.read();}
+export function fuyaoRestoreMessage(){return restoreMessage;}
+export function forgetFuyaoKey(){deviceStore()?.clear();disableFuyaoDirect();restoreMessage='已清除本机密钥。';changed();}
+export function rememberCurrentFuyaoKey(remember:boolean){if(remember&&sessionKey)deviceStore()?.save(sessionKey);else if(!remember)deviceStore()?.clear();changed();}
+export function restoreFuyaoDirect(){
+ if(sessionKey)return Promise.resolve(true);if(restoring)return restoring;
+ const key=deviceStore()?.read();if(!key)return Promise.resolve(false);
+ const rev=generation;restoreMessage='正在验证本机保存的 Key…';changed();
+ const job=client.verify(key).then(()=>{if(rev!==generation)return false;sessionKey=key;generation++;pending=null;restoreMessage='已自动恢复本机 Key，鉴权通过。';changed();return true;}).catch(()=>{if(rev===generation){restoreMessage='本机 Key 已保留，恢复验证暂未通过；公开行情继续，稍后自动重试。';changed();}return false;}).finally(()=>{if(restoring===job)restoring=null;});restoring=job;return job;
+}
