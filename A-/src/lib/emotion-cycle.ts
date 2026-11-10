@@ -2,7 +2,7 @@ export const emotionStages=[
  {id:'ice',name:'冰点',color:'muted',description:'涨停与高度低，赚钱效应弱'},
  {id:'start',name:'启动',color:'priority',description:'样本与梯队开始建立，等待持续性'},
  {id:'ferment',name:'发酵',color:'positive',description:'涨停扩散，梯队与指数配合'},
- {id:'climax',name:'高潮',color:'watch',description:'广度、高度与封板质量同时较强'},
+ {id:'climax',name:'高潮',color:'priority',description:'广度、高度与封板质量同时较强'},
  {id:'divide',name:'分歧',color:'watch',description:'炸板增多或指数与题材表现分化'},
  {id:'decline',name:'衰退',color:'risk',description:'封板、指数或跌停压力明显恶化'},
 ] as const;
