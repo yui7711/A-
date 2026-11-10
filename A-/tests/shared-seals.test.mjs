@@ -4,12 +4,25 @@ import {cloudSnapshot,collectionSlot,mergeSealArchive,parseSealArchive,closingMa
 import {readSharedSeals,createSharedSealReader} from '../src/lib/shared-seals.ts';
 import {nextOutlook} from '../src/lib/next-outlook.ts';
 import {marketMethod} from '../src/lib/market-method.ts';
+import {handbookMarketData} from '../src/lib/handbook-market-data.ts';
 const at=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const key='sk-fuyao-test_key_only_1234567890';
 const empty={version:1,generatedAt:'',records:[],runs:[]};
 const stock=x=>({code:'000001',name:'测试',boards:5,seal:1e8,amount:1e9,maxSeal:1e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:30',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){return {fetchedAt:new Date(at(t)).toISOString(),tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTotal:1,poolTimestamp:null,stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:1})),themes:[],sectors:[],hot:[],sources:[],lhb:[],lhbDate:null,stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};};
+test('original handbook uses prior consecutive boards as its denominator and requires complete same-day quotes for premium',()=>{
+ const prior=[stock({boards:4}),stock({code:'000002',boards:2}),stock({code:'000003',boards:1})];
+ const evidence={tradeDate:'2026-11-06',previousDate:'2026-11-05',previousPool:{date:'2026-11-05',total:3,complete:true,stocks:prior}};
+ const current=market('15:01',{research:evidence});
+ const quotes=[{code:'sz000001',change:10,time:'20261106150100'},{code:'sz000002',change:-9,time:'20261106150100'},{code:'sz000003',change:-10,time:'20261106150100'}];
+ const filled=handbookMarketData(current,at('16:00'),quotes);
+ assert.equal(filled.fields.jjl,50);
+ assert.equal(filled.fields.damian,1);
+ assert.equal(filled.fields.prem,-3);
+ assert.equal(handbookMarketData(current,at('16:00'),quotes.slice(0,2)).fields.prem,null);
+ assert.equal(handbookMarketData({...current,cached:true},at('16:00'),quotes).fields.zt,null);
+});
 test('method compares an earlier same-source cohort and distinguishes a candidate rotation from a missing baseline',()=>{
  const morning=market('11:30',{stats:{up:1,down:0,opened:3,sealRate:.25}});
  const noon=cloudSnapshot(morning,'noon',at('11:30'));

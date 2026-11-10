@@ -409,6 +409,7 @@
     var body = document.getElementById('drawerBody');
     var t = TABS.filter(function (x) { return x.id === id; })[0];
     RENDERERS[id](body);
+    document.dispatchEvent(new CustomEvent('obsidian:handbook-tool', { detail: id }));
   }
 
   document.addEventListener('DOMContentLoaded', function () {
