@@ -16,8 +16,9 @@ window.addEventListener('message',event=>{
 async function refresh(){
  try{
   const archive=await readSharedSeals();
-  const market=latestHandbookMarket(archive.records,marketClock().date);
-  if(market)send({market});
+  const today=marketClock().date;
+  const market=latestHandbookMarket(archive.records,today);
+  if(market)send({market,historical:market.date!==today,checkedAt:Date.now()});
   else send({error:'暂无有效行情快照，可手动填写。'});
  }catch{
   send({error:'快照暂未取到，保留手动填写并自动重试。'});

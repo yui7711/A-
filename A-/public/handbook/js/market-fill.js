@@ -2,6 +2,8 @@
   'use strict';
 
   let bridge, tool, market, fields = [], picker, status, missing, sourceInfo, pickerItems;
+  let following=true, historical=false, checkedAt=0, lastRequest=0;
+  const temperatureSnapshot = new Set(['f_zt','f_high','f_lb','f_zbl']);
   const manual = new Map();
   const selected = new Map();
   let connection = '正在读取曜石共享快照…';
@@ -15,6 +17,7 @@
 
   function request(force = false) {
     if (document.hidden || !document.getElementById('drawer').classList.contains('on')) return;
+    if (!force && (!following || Date.now()-lastRequest<30000)) return;
     if (!bridge) {
       bridge = document.createElement('iframe');
       bridge.hidden = true;
@@ -22,6 +25,7 @@
       bridge.src = '../handbook-market.html';
       document.body.append(bridge);
     } else {
+      lastRequest=Date.now();
       bridge.contentWindow.postMessage({ kind: 'obsidian-handbook-request', force }, location.origin);
     }
   }
@@ -110,10 +114,15 @@
     let filled = 0, user = 0, pending = 0;
     for (const {field, badge} of fields) {
       const provided = evidence(field.id,data);
-      const isManual = overrides.has(field.id);
+      const fromSnapshot = tool==='thermo'&&temperatureSnapshot.has(field.id)&&provided.value!=null;
+      const isManual = !fromSnapshot&&overrides.has(field.id);
       const value = isManual ? overrides.get(field.id) : provided.value;
       const before = read(field);
       apply(field,value);
+      if (tool==='thermo'&&temperatureSnapshot.has(field.id)) {
+        field.readOnly=fromSnapshot;
+        if (fromSnapshot) overrides.delete(field.id);
+      }
       if (before!==read(field)) clearResult();
       const known = value!=null&&value!=='';
       badge.textContent = !known?'需手动填写':isManual?'手动已填':'快照预填';
@@ -125,7 +134,8 @@
       else if (isManual) user++;
       else filled++;
     }
-    sourceInfo.textContent = data ? data.date+' · '+data.source+' · '+data.timeBasis+' '+time(data.time)+(connection?' · '+connection:'') : connection;
+    sourceInfo.textContent = data ? data.date+' · '+data.source+' · '+data.timeBasis+' '+time(data.time)
+      +(historical?' · 最近可用历史快照':'')+(checkedAt?' · 检查 '+time(checkedAt):'')+(connection?' · '+connection:'') : connection;
     status.textContent = '自动 '+filled+' 项 · 手动 '+user+' 项 · 待补 '+pending+' 项';
     if (!pending) missing.textContent = '';
   }
@@ -162,7 +172,21 @@
       });
       actions.append(picker);
     }
-    button('更新快照',()=>request(true));
+    const followLabel=document.createElement('label');
+    const followInput=document.createElement('input');
+    followInput.type='checkbox';
+    followInput.checked=following;
+    followInput.addEventListener('change',()=>{
+      following=followInput.checked;
+      if(following)request(true);
+    });
+    followLabel.append(followInput,' 自动跟随最新快照');
+    actions.append(followLabel);
+    button('立即检查快照',()=>{
+      connection='正在检查最新快照…';
+      sync();
+      request(true);
+    });
     button('重置手动值',()=>{manual.delete(tool);clearResult();sync();});
     const formFields = [...body.querySelectorAll('input[id], select[id]')];
     fields = formFields.map(field=>{
@@ -205,7 +229,7 @@
   window.addEventListener('message',event=>{
     if (event.origin!==location.origin||event.source!==bridge?.contentWindow||event.data?.kind!=='obsidian-handbook-market') return;
     const {ready,error,market:next}=event.data;
-    if (ready) { request(); return; }
+    if (ready) { request(true); return; }
     if (next) {
       if (market?.date && next.date && market.date!==next.date && next.valid) {
         manual.clear();
@@ -213,6 +237,8 @@
         clearResult();
       }
       market = next;
+      historical=event.data.historical===true;
+      checkedAt=event.data.checkedAt||0;
       connection = '';
     } else if (error) {
       connection = error;
@@ -221,5 +247,5 @@
   });
   document.addEventListener('obsidian:handbook-tool',event=>setup(event.detail));
   document.addEventListener('visibilitychange',()=>{ if (!document.hidden) {sync();request();} });
-  setInterval(()=>{ if (tool&&!document.hidden) {sync();request();} },5000);
+  setInterval(()=>{ if (tool&&!document.hidden) request(); },5000);
 })();
