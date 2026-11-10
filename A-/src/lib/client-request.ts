@@ -62,12 +62,43 @@ const liveURL='https://obsidian-stock-radar.d69m29kwvj.chatgpt.site';
 const proxyJSON=<T,>(path:string,timeoutMs=18000,signal?:AbortSignal)=>httpJSON<T>(liveURL+path,{credentials:'omit',signal},{timeoutMs,retries:0});
 function publicRoute(){return getDataRoute(k=>localStorage.getItem(k))==='public';}
 let lastMarket:Market|null=null;
-const makeReader=()=>createMultiSourceReader({live:f=>hasFuyaoDirect()?readFuyaoDirect():proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),preferLive:hasFuyaoDirect,snapshot:loadSnapshot,previous:()=>lastMarket,publicMarket:async(f,s)=>publicResearch(await client.market(f,s),s)});
+const makeReader=()=>createMultiSourceReader({
+ live:f=>hasFuyaoDirect()?readFuyaoDirect():proxyJSON<Market>('/api/provider-market'+(f?'?fresh=1':''),12000),
+ preferLive:hasFuyaoDirect,
+ fuyaoFirst:true,
+ snapshot:loadSnapshot,
+ previous:()=>lastMarket,
+ publicMarket:(f,s)=>client.market(f,s),
+});
 let multiSource=makeReader(),directRevision=fuyaoDirectRevision();
+const enrichment=new Map<string,{pending:boolean;checkedAt:number;value?:Market}>();
+function enrichOnNextPoll(data:Market){
+ if(data.providerMode==='snapshot'||!data.tradeDate||data.research?.volume&&data.research.previousPool)return data;
+ const key=[data.tradeDate,data.providerMode,data.themeBasis].join('/');
+ let state=enrichment.get(key);
+ if(!state){
+  state={pending:false,checkedAt:0};
+  enrichment.set(key,state);
+  if(enrichment.size>4)enrichment.delete(enrichment.keys().next().value!);
+ }
+ if(!state.pending&&Date.now()-state.checkedAt>=20000){
+  const entry=state;
+  entry.pending=true;
+  void loadSnapshot().then(s=>publicResearch(data,s)).then(result=>{entry.value=result;}).catch(()=>{}).finally(()=>{
+   entry.checkedAt=Date.now();
+   entry.pending=false;
+  });
+ }
+ const evidence=state.value?.research;
+ if(!evidence)return data;
+ const current=data.research;
+ const merged=current?{...evidence,...current,previousPool:current.previousPool??evidence.previousPool,volume:current.volume??evidence.volume}:evidence;
+ return {...data,research:merged};
+}
 async function getMarket(force:boolean){
  if(directRevision!==fuyaoDirectRevision()){directRevision=fuyaoDirectRevision();multiSource=makeReader();}
  const data=await multiSource(force,publicRoute()?'public':'auto');
- const next=data.providerMode==='proxy'&&!data.research?await publicResearch(data,await loadSnapshot()):data;
+ const next=enrichOnNextPoll(data);
  if(next.providerMode!=='snapshot')lastMarket=next;return next;
 }
 const chartCache=new Map<string,History>();

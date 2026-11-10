@@ -19,7 +19,8 @@ export async function collectFuyao({key,transport,quotes,base}){
  const poolDate=shDate(pool.timestamp),reset=items.length>0&&num(stats?.limit_up_stock_count)===0;
  const sameStats=stats?.trade_date===poolDate&&!reset,sameDown=shDate(down?.timestamp)===poolDate&&!reset;
  let stocks=[...new Map(items.map(mapPool).filter(s=>/^\d{6}$/.test(s.code)).map(s=>[s.code,s])).values()];
- const detailed=await quotes(stocks.map(s=>symbol(s.code))).catch(()=>[]),qmap=new Map(detailed.map(q=>[q.code.slice(2),q]));
+ const detailed=await quotes(stocks.map(s=>symbol(s.code))).catch(()=>[]);
+ const qmap=new Map(detailed.filter(q=>typeof q.time==='string'&&q.time.slice(0,8)===poolDate.replaceAll('-','')).map(q=>[q.code.slice(2),q]));
  stocks=stocks.map(s=>{const q=qmap.get(s.code);return q?{...s,price:q.price??s.price,change:q.change??s.change,turnover:q.turnover??s.turnover,amount:q.amount,open:q.open,high:q.high,low:q.low,quoteDate:q.time,source:s.source+' · 腾讯报价'}:s;});
  const themes=new Map();for(const s of stocks.filter(s=>!s.isST))for(const name of s.themes){const t=themes.get(name)||{name,count:0,leaders:[]};t.count++;if(t.leaders.length<3)t.leaders.push(s.name);themes.set(name,t);}
  const lmap=new Map();for(const x of lhb?.stock_items||lhb?.item||[]){const code=x.ticker||x.thscode?.split('.')[0];if(!/^\d{6}$/.test(code))continue;const row={code,name:String(x.name||''),net:num(x.net_value),org:num(x.org_net_value),days:x.range_days||1,reason:x.limit_reason||x.concept_list?.map(c=>c.name).join(' · ')||''},id=code+'-'+row.days;const old=lmap.get(id);if(!old||Math.abs(row.net??0)>Math.abs(old.net??0))lmap.set(id,row);}

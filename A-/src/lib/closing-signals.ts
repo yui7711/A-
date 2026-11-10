@@ -36,11 +36,15 @@ export function classifySeal(s:Stock,change:number|null,ratio:number|null,valid:
  else if(ratio!=null&&ratio<.1)signals.push({label:'封单偏薄',tone:'watch',reason:`封成比 ${ratio.toFixed(3)} <0.10`});
  if(s.openTimes!=null&&s.openTimes>=3)signals.push({label:'反复开板',tone:'watch',reason:`开板 ${s.openTimes} 次；回封数量不等于回封质量`});
  if(s.turnover!=null&&s.turnover>=35)signals.push({label:'高换手',tone:'watch',reason:`换手 ${s.turnover.toFixed(1)}% ≥35%，留意分歧与承接`});
- const missing=[change==null?'午盘对照':null,ratio==null?'有效封单 / 成交额':null,s.openTimes==null?'开板次数':null,s.turnover==null?'换手率':null].filter(Boolean);
- const measured=!missing.length;
- if(!signals.length)signals.push(measured?{label:'结构相对稳定',tone:'positive',reason:'午盘衰减、封成比、开板次数和换手均未触及本站警示门槛'}:{label:'证据待补齐',tone:'muted',reason:`缺少${missing.join('、')}；现有数据未触及门槛，不认定为安全`});
+ const missing=[ratio==null?'封单 / 成交额':null,!finite(s.openTimes)?'开板次数':null,!finite(s.turnover)?'换手率':null].filter((item):item is string=>item!=null);
+ const checked=valid?3-missing.length:0;
+ const measured=checked===3&&change!=null;
+ if(!valid)signals.splice(0,signals.length,{label:'当前行情待核验',tone:'muted',reason:'本轮行情的日期、时效或完整性未通过核验'});
+ else if(!signals.length)signals.push(measured
+  ?{label:'结构相对稳定',tone:'positive',reason:'午盘衰减、封成比、开板次数和换手均未触及本站警示门槛'}
+  :{label:checked?'当前未触发警示':'当前结构缺数据',tone:'muted',reason:`已核验 ${checked}/3 项当前结构${missing.length?'；缺少'+missing.join('、'):''}`});
  const tone:SignalTone=!valid?'muted':signals.some(s=>s.tone==='risk')?'risk':signals.some(s=>s.tone==='watch')?'watch':signals[0].tone;
- return {signals,tone,measured};
+ return {signals,tone,measured,checked,missing};
 }
 export function buildClosingSignals(data:Market|null,records:SealSnapshot[],now:number){
  const source=data?sealSource(data):null,valid=!!data&&complete(data)&&!assessTactics(data,now).dataIssue;
@@ -52,7 +56,8 @@ export function buildClosingSignals(data:Market|null,records:SealSnapshot[],now:
   const change=hasComparison&&prior&&finite(prior.seal)&&prior.seal>0&&finite(s.seal)?s.seal/prior.seal-1:null;
   const ratio=finite(s.seal)&&finite(s.amount)&&s.amount>0?s.seal/s.amount:null;
   const result=classifySeal(s,valid?change:null,valid?ratio:null,valid);
-  return {stock:s,prior:prior?.seal??null,inNoon:!!prior,change:valid?change:null,ratio:valid?ratio:null,...result};
+  const comparison=!noon?'午盘未采集':!prior?'午盘池无该股':!hasComparison?'等待尾盘时段':!valid?'当前行情待核验':change==null?'午盘基准为零或封单缺失':'午盘对照已核验';
+  return {stock:s,prior:prior?.seal??null,inNoon:!!prior,change:valid?change:null,ratio:valid?ratio:null,comparison,...result};
  }).sort((a,b)=>({risk:0,watch:1,positive:2,muted:3}[a.tone]-{risk:0,watch:1,positive:2,muted:3}[b.tone])||b.stock.boards-a.stock.boards||b.stock.score-a.stock.score);
  const high=rows.filter(r=>r.stock.boards>=Math.max(2,Math.min(3,highest))),riskCount=high.filter(r=>r.tone==='risk').length;
  const disappeared=hasComparison?noon!.stocks.filter(s=>!s.isST&&s.boards>=2&&!pool.some(c=>c.code===s.code)):[];

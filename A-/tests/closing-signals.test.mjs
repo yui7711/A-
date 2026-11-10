@@ -5,6 +5,14 @@ const epoch=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const stock=(x={})=>({code:'000001',name:'样本',boards:5,seal:1e8,amount:1e9,maxSeal:9e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:35',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){const at=epoch(t);return {tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTimestamp:null,poolTotal:1,fetchedAt:new Date(at).toISOString(),stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:0})),themes:[],stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 test('noon is an actual same-day observation; daily maximum cannot supply missing noon',()=>{const d=market('14:50');const r=buildClosingSignals(d,[],epoch('14:50'));assert.equal(r.hasComparison,false);assert.equal(r.rows[0].change,null);assert.equal(r.rows[0].prior,null);assert.equal(r.rows[0].tone,'muted');});
+test('available current fields stay usable when only the historical noon sample is missing',()=>{
+ const row=buildClosingSignals(market('14:50'),[],epoch('14:50')).rows[0];
+ assert.equal(row.checked,3);
+ assert.deepEqual(row.missing,[]);
+ assert.equal(row.signals[0].label,'当前未触发警示');
+ assert.equal(row.comparison,'午盘未采集');
+ assert.equal(row.measured,false);
+});
 test('same-source noon-to-tail drop is computed and core risk outranks stability',()=>{const records=recordSealSnapshot([],market(),epoch('11:30'));const d=market('14:50',{stocks:[stock({seal:5e6})]});const r=buildClosingSignals(d,records,epoch('14:50'));assert.equal(records[0].basis,'observed');assert.equal(r.hasComparison,true);assert.equal(r.rows[0].change,-.95);assert.equal(r.rows[0].ratio,.005);assert.equal(r.rows[0].tone,'risk');assert.equal(r.riskCount,1);});
 test('provider switching and cross-day records cannot become a noon comparison',()=>{const records=recordSealSnapshot([],market(),epoch('11:30'));const d=market('14:50',{stocks:[stock({source:'FUYAO'})]});assert.equal(buildClosingSignals(d,records,epoch('14:50')).hasComparison,false);const other=records.map(r=>({...r,date:'2026-11-05'}));assert.equal(buildClosingSignals(market('14:50'),other,epoch('14:50')).hasComparison,false);});
 test('zero seal is a real value; absent or zero amount is unknown, not zero ratio',()=>{for(const amount of [null,0]){const r=buildClosingSignals(market('14:50',{stocks:[stock({seal:0,amount})]}),[],epoch('14:50'));assert.equal(r.rows[0].ratio,null);}const r=buildClosingSignals(market('14:50',{stocks:[stock({seal:0})]}),[],epoch('14:50'));assert.equal(r.rows[0].ratio,0);assert.equal(r.rows[0].tone,'risk');});

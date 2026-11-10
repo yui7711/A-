@@ -1,5 +1,29 @@
 import type {Market} from './market-types';
 import {num,scoreStock} from './market-core.ts';
+import {quoteEpoch} from './tactics.ts';
+
+export function mergeBackupStockFields(data:Market,backup:Market):Market{
+ if(!data.poolDate||data.poolDate!==backup.poolDate||backup.poolDate!==backup.tradeDate)return data;
+ const difference=Math.abs(Date.parse(data.fetchedAt)-Date.parse(backup.fetchedAt));
+ if(!Number.isFinite(difference)||difference>30000)return data;
+ const rows=new Map(backup.stocks.map(stock=>[stock.code,stock]));
+ let changed=false;
+ const stocks=data.stocks.map(stock=>{
+  const alternate=rows.get(stock.code);
+  if(!alternate||alternate.boards!==stock.boards)return stock;
+  const poolAt=data.poolTimestamp;
+  const quoteAt=alternate.quoteDate?quoteEpoch(alternate.quoteDate):null;
+  const sameTime=poolAt!=null&&quoteAt!=null&&Math.abs(poolAt-quoteAt)<=180000;
+  const opening=stock.openTimes??alternate.openTimes;
+  const turnover=stock.turnover??(sameTime?alternate.turnover:stock.turnover);
+  const amount=stock.amount??alternate.amount;
+  if(opening===stock.openTimes&&turnover===stock.turnover&&amount===stock.amount)return stock;
+  const next={...stock,openTimes:opening,turnover,amount,source:stock.source+' · 东方财富补充'};
+  changed=true;
+  return {...next,...scoreStock(next)};
+ });
+ return changed?{...data,stocks}:data;
+}
 /** Fill optional fields only from a matching public pool. A late response must not replace a newer refresh. */
 export function mergePublicFields(data:Market,payload:any):Market{
  const pool=payload?.data,date=String(pool?.qdate||'').replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3');

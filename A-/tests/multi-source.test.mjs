@@ -5,6 +5,15 @@ import {buildResearch} from '../src/lib/research.ts';
 const now=Date.parse('2026-11-04T11:00:00+08:00');
 function data(kind='public',extra={}){return {fetchedAt:new Date(now).toISOString(),servedAt:new Date(now).toISOString(),tradeDate:'2026-11-04',poolDate:'2026-11-04',poolTotal:1,poolTimestamp:kind==='fuyao'?now:null,providerMode:kind==='fuyao'?'proxy':'public',stocks:[{code:'000001',name:'测试',boards:2,price:10,isST:false,themes:['银行'],source:kind,seal:1e8,openTimes:0,score:60}],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,price:10,change:1,time:'20261104110000'})),stats:{up:1,down:0,opened:0,sealRate:1,exact:[]},sectors:[],themes:[],lhb:[],lhbDate:null,hot:[],sources:[{id:kind==='fuyao'?'fuyao':'em-pool',name:kind,status:'ok',date:'2026-11-04',mode:'live'}],...extra};}
 const fail=async()=>{throw new TypeError('Failed to fetch')};
+test('Pages prefers a healthy compatible provider and rejects a date-only or old intraday pool',async()=>{
+ let fy=data('fuyao');
+ const read=createMultiSourceReader({now:()=>now,fuyaoFirst:true,live:async()=>fy,publicMarket:async()=>data(),snapshot:async()=>null});
+ assert.equal((await read()).providerMode,'proxy');
+ fy=data('fuyao',{poolTimestamp:null});
+ assert.equal((await read()).providerMode,'public');
+ fy=data('fuyao',{poolTimestamp:now-181000});
+ assert.equal((await read()).providerMode,'public');
+});
 test('public data renders without waiting for a hanging THS request, which is shared across refreshes',async()=>{
  let calls=0;const read=createMultiSourceReader({now:()=>now,live:()=>{calls++;return new Promise(()=>{})},snapshot:async()=>null,publicMarket:async()=>data()});
  for(let i=0;i<3;i++){const r=await read();assert.equal(r.providerMode,'public');assert.equal(r.sources[0].availability,'checking');}
