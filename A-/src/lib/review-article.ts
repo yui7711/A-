@@ -6,6 +6,7 @@ import {assessTactics} from './tactics.ts';
 import {marketMethod} from './market-method.ts';
 import {handbookTurning,referenceRotation,themeRoles} from './reference-research.ts';
 import {classifyRoleEvidence,middleEvidence,priorPerformance,type DecisionProof} from './decision-proof.ts';
+import {rankCoveredBoards} from './board-universe.ts';
 
 const percent=(n:number|null)=>n==null?'待核验':(n*100).toFixed(1)+'%';
 const price=(n:number|null|undefined)=>n==null?'待核验':n.toFixed(2);
@@ -52,6 +53,9 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
   const flags=handbookTurning(data,method,proof).map(t=>({name:t.name,yes:t.signals.filter(s=>s.passed===true).length,known:t.signals.filter(s=>s.passed!=null).length,total:t.signals.length})).filter(t=>t.yes>=2);
   sections[2].lines.push(...(flags.length?flags.map(t=>`${t.name} · 命中 ${t.yes} · 已核验 ${t.known}/${t.total} · 待后续确认`):['八类拐点中暂无两项以上同类信号命中']));
   if(rotationEvidence.confirmed)sections[4].lines.push('主线切换 · 已通过旧线、新线与终局三道门槛');
+  const boardRanks=rankCoveredBoards(data,data.boardCoverage);
+  if(boardRanks.length)sections[6].lines.push(...boardRanks.slice(0,4).map(row=>
+   `东方财富${row.board.kind} · ${row.board.name} · ${row.complete?'':'至少 '}${row.width} 只涨停 · 高度 ${row.leader.name} ${row.highest} 板 · 中军候选 ${row.middle?.name||'缺同刻容量票'} · ${row.structuralFollower?'补涨候选':'低位跟随'} ${row.follower?.name||'暂无'}`));
   if(rotationEvidence.dates.length>1){
    sections[4].lines.push(`题材趋势 · ${rotationEvidence.trendSource} · ${rotationEvidence.dates.join(' / ')}`);
    sections[4].lines.push(...rotationEvidence.trend.slice(0,4).map(t=>t.name+' · '+t.counts.map(n=>n??'—').join(' / ')));

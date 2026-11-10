@@ -7,6 +7,7 @@ import {createResearchEvidenceLoader} from '../src/lib/research-evidence.ts';
 import {verifiedHistoryPool} from '../src/lib/public-research.ts';
 import {asOf,sameMoment,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
 import {symbol} from '../src/lib/market-core.ts';
+import {addBoardTrends,captureBoards,coverageMatchesMarket} from '../src/lib/board-universe.ts';
 const file=new URL('../public/data/seal-snapshots.json',import.meta.url),key=process.env.FUYAO_API_KEY||'';
 let archive=await readFile(file,'utf8').then(JSON.parse).then(parseSealArchive).catch(()=>({version:1,generatedAt:'',records:[],runs:[]}));
 // Scheduled runners start early, then wait for the target. Delayed starts use actual time and never relabel a close as noon.
@@ -41,10 +42,15 @@ if(slot===window){
    record.market=withPreviousSnapshot(record.market,archive.records);
   }
   const ids=[...new Set(records.flatMap(record=>record.market.research?.previousPool?.stocks.map(s=>symbol(s.code))||[]))];
+  const boardMarket=(records.find(record=>record.source==='FUYAO')||records[0]).market;
+  const boardsJob=captureBoards(boardMarket,transport)
+   .then(coverage=>coverage?addBoardTrends(boardMarket,coverage,code=>client.history(symbol(code))):null).catch(()=>null);
   const jobs=[];
   for(let i=0;i<ids.length;i+=40)jobs.push(client.quotes(ids.slice(i,i+40)).catch(()=>[]));
   const quotes=(await Promise.all(jobs)).flat();
+  const coverage=await boardsJob;
   for(const record of records){
+   if(coverage&&coverageMatchesMarket(record.market,coverage))record.market.boardCoverage=coverage;
    const previous=record.market.research?.previousPool;
    if(!previous?.complete)continue;
    const accepted=new Set(previous.stocks.map(s=>symbol(s.code)));

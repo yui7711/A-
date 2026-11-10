@@ -15,6 +15,7 @@ import {ArchivedArticle,ArchivedPlan} from './review-workspace';
 import {SignalLegend} from './signal-legend';
 import TacticsPanel from './tactics-panel';
 import {useDecisionProof} from './use-decision-proof';
+import {BoardCoveragePanel} from './board-coverage-panel';
 
 const sections=[
  {id:'cycle',label:'周期判定',icon:Activity},
@@ -100,9 +101,10 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
     <Evidence title="查看情绪周期、六维评分与辅助信号"><SentimentPanel data={data} now={now}/><AuxiliaryPanel data={data} now={now}/></Evidence></>;
    break;
   case 'topics':
-   panel=<><ResultCard title="题材热点 · 去噪排名" result={lead?lead.name+' 暂列首位':'题材数据待核验'} tone={lead?'priority':'muted'}
-    description={lead?'按产业归并、同题材同股去重。热度结合涨停数、最高板和连板层级。':'等待有效涨停名单及题材归类。'}
+   panel=<><ResultCard title="题材热点 · 涨停池标签" result={lead?lead.name+' 暂列标签榜首位':'题材数据待核验'} tone={lead?'priority':'muted'}
+    description={lead?'标签榜按涨停原因或行业归类。下方成分榜用板块成员逐股匹配，两榜口径分别标示。':'等待有效涨停名单及题材归类。'}
     metrics={method.currentLines.length?method.currentLines.map((g,i)=>({label:`TOP ${i+1} · ${g.name}`,value:count(g.count,'只涨停'),detail:`热度 ${g.heat}/100 · 最高 ${g.highest} 板`})):[{label:'主线样本',value:'—',detail:'尚未取得有效名单'}]}/>
+    <BoardCoveragePanel data={valid?data:null} records={records} onStock={onStock} mode="topics"/>
     <TopicBoard data={data} method={method} onStock={onStock} records={records}/></>;
    break;
   case 'turn':
@@ -130,17 +132,19 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'当前首位',value:lead?.name||'—',detail:lead?`${lead.count} 只涨停 · 最高 ${lead.highest} 板`:'当前主题待核验'},
      {label:'前三留存',value:old&&lead?baseline.filter(l=>method.currentLines.some(c=>c.name===l.name)).length+' / '+baseline.length:'—',detail:'按题材名匹配'},
     ]}/>
+    <BoardCoveragePanel data={valid?data:null} records={records} onStock={onStock} mode="rotation"/>
     <RotationBoard rotation={rotation}/></>;
    break;
   }
   case 'roles':
-   panel=<><ResultCard title="主线 · 龙头 · 中军 · 补涨" result={lead?`重点查看 ${lead.name}`:'等待有效主线'} tone={lead?'priority':'muted'}
-    description="角色卡列出同题材样本与判定依据。中军仍需核验全板块成交和持续承接。"
+   panel=<><ResultCard title="主线 · 龙头 · 中军 · 补涨" result={lead?'板块角色一览':'等待有效主线'} tone={lead?'priority':'muted'}
+    description="先看板块成分榜中的高度、容量和低位样本，再用下方个股体检查核验条件。"
     metrics={[
      {label:'主线涨停样本',value:count(lead?.count,'只'),detail:'去噪后样本'},
      {label:'高度龙头候选',value:lead?.stocks[0]?.name||'—',detail:lead?`${lead.highest} 板 · 题材内按板数优先`:'等待样本'},
      {label:'高标危险信号',value:valid?count(closing.riskCount,'只'):'—',detail:'当前完整池的高标警示',tone:closing.riskCount?'risk':'priority'},
     ]}/>
+    <BoardCoveragePanel data={valid?data:null} records={records} onStock={onStock} mode="roles"/>
     <RoleBoard data={data} method={method} onStock={onStock} records={records}/>
     <Evidence title="展开高标个股、封单与下一时段观察"><ClosingWatchPanel {...modelProps} period={archivePeriod}/></Evidence></>;
    break;

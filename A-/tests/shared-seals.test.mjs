@@ -9,12 +9,29 @@ import {handbookMarketData,latestHandbookMarket} from '../src/lib/handbook-marke
 import {archivedFeedback,classifyRoleEvidence,emptyPools,priorPerformance,sessionMinuteEvidence,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
 import {poolObservation} from '../src/lib/public-pool-evidence.ts';
 import {tencentMinuteHistory} from '../src/lib/minute-history.ts';
+import {coverageMatchesMarket,rankCoveredBoards} from '../src/lib/board-universe.ts';
 const at=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const key='sk-fuyao-test_key_only_1234567890';
 const empty={version:1,generatedAt:'',records:[],runs:[]};
 const stock=x=>({code:'000001',name:'测试',boards:5,seal:1e8,amount:1e9,maxSeal:1e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:30',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){return {fetchedAt:new Date(at(t)).toISOString(),tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTotal:1,poolTimestamp:null,stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:1})),themes:[],sectors:[],hot:[],sources:[],lhb:[],lhbDate:null,stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};};
+test('full board constituents identify non-limit-up capacity and preserve the distinction between follower and replenishment',()=>{
+ const leader=stock({code:'000001',boards:3,time:'09:32'}),low=stock({code:'000002',boards:2,time:'09:50'});
+ const data=market('15:01',{stocks:[low,leader],poolTotal:2,research:{previousDate:'2026-11-05'}});
+ const middle={code:'000003',name:'容量股',cap:150e8,amount:28e8,change:2,flow:1e8,turnover:3};
+ const board={code:'BK1234',name:'概念',kind:'概念',change:3,flow:1e8,total:3,members:[low.code,leader.code,middle.code],liquid:[middle]};
+ const coverage={date:data.tradeDate,at:at('16:00'),boards:[board]};
+ const previous=market('15:01',{tradeDate:'2026-11-05',stocks:[leader],poolTotal:1});
+ assert.equal(coverageMatchesMarket(data,coverage),true);
+ assert.equal(coverageMatchesMarket(market('11:30'),coverage),false);
+ const row=rankCoveredBoards(data,coverage,previous)[0];
+ assert.deepEqual([row.width,row.before,row.leader.code,row.middle.code,row.follower.code,row.structuralFollower],
+  [2,1,leader.code,middle.code,low.code,false]);
+ const partial=rankCoveredBoards(data,{...coverage,boards:[{...board,total:8}]},previous)[0];
+ assert.equal(partial.before,null);
+ assert.equal(partial.complete,false);
+});
 test('pool evidence distinguishes zero, truncated and wrong-date pools',()=>{
  const date='2026-11-06',qdate=20261106;
  const pools=poolObservation(date,{qdate,tc:1,pool:[{c:'000001',ltsz:30e8,lbt:145300}]},
