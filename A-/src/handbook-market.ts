@@ -50,7 +50,7 @@ async function refresh(request:{date?:string;slot?:string;code?:string;tool?:str
   const themes=themeFacts(data,market.source,archive.records,proof.prior,market.themes).map(t=>({
    ...t,middleScore:t.name===industry&&middleEvidence(data!,proof,t.name)?.breakout?15:null,
   }));
-  send({market:{...market,themes,prior,role,volumeRatio:stock?closingVolumeRatio(proof.daily[stock.code],data.tradeDate,proof.at):null,phase:model.phase},...meta});
+  send({market:{...market,themes,prior,role,volumeCode:stock?.code,volumeRatio:stock?closingVolumeRatio(proof.daily[stock.code],data.tradeDate,proof.at):null,phase:model.phase},...meta});
  }catch{
   if(id===version)send({error:'行情补证暂未取到，稍后自动重试。'});
  }

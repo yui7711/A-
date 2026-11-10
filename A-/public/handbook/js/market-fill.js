@@ -71,7 +71,7 @@
           const v = stock.turnover;
           return auto(v>=15&&v<=35?1:v>=10&&v<=45?0:-1,'候选股当日换手率 '+v+'%');
         }
-        if (id==='dv_2'&&data?.volumeRatio>=1.5) return auto(data.volumeRatio>3?-1:data.volumeRatio>2.5?0:1,'当日成交量 ÷ 前五日均量 '+data.volumeRatio.toFixed(2)+' 倍');
+        if (id==='dv_2'&&stock&&data?.volumeCode===stock.code&&data.volumeRatio>=1.5) return auto(data.volumeRatio>3?-1:data.volumeRatio>2.5?0:1,'当日成交量 ÷ 前五日均量 '+data.volumeRatio.toFixed(2)+' 倍');
         return absent('缺原选项对应的分钟盘口、历史分歧或次日行情');
       case 'dragon': {
         const role=data?.role?.code===stock?.code?data?.role:null;
