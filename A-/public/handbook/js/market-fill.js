@@ -250,6 +250,8 @@
     const {ready,error,market:next}=event.data;
     if (ready) { request(true); return; }
     if (next) {
+      const sameSession=market?.valid&&market.date===next.date&&market.source===next.source&&market.timeBasis===next.timeBasis;
+      if (sameSession&&!next.prior) return;
       if (market?.date && next.date && market.date!==next.date && next.valid) {
         manual.clear();
         selected.clear();
