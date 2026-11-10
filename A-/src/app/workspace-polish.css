@@ -108,9 +108,6 @@
 .tool-body select,.tool-body input[type=number]{min-width:0;border:1px solid var(--line);background:var(--soft);color:var(--text);padding:7px;border-radius:7px}
 .tool-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:10px 0}
 .tool-inputs label{display:grid;gap:4px}
-.original-handbook{margin:12px 0;padding:12px}
-.original-handbook p{color:var(--muted);margin:2px 0 10px}
-.original-handbook iframe{display:block;width:100%;height:clamp(480px,74vh,900px);border:1px solid var(--line);border-radius:10px;background:white}
 .method-live{margin:8px 0}
 .method-live h3,.handbook-intro h2{display:flex;align-items:center;gap:6px}
 .method-live p,.method-live small,.handbook-chapter dd{color:var(--secondary);line-height:1.7}

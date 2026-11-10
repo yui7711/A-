@@ -104,7 +104,8 @@ export function JudgmentToolbox({data,now,records,onManual,onStock}:{data:Market
  ];
  return <section className="panel judgment-toolbox">
   <div className="panel-heading"><div><h2><Calculator size={19}/> 判定工具箱</h2><p>{data?.tradeDate||'等待行情'} · {sealSourceOrUnknown(data)} · {usable?a.clock.label:a.dataIssue||'当前数据待核验'}</p></div>
-   <button type="button" className="text-btn" onClick={onManual}><BookOpen size={15}/> 对照判定手册</button>
+   <div className="button-row"><a className="secondary-btn" href="./handbook/index.html?tool=1">原版判定工具箱</a>
+    <button type="button" className="text-btn" onClick={onManual}><BookOpen size={15}/> 对照判定手册</button></div>
   </div>
   <div className="tool-body">
    <div className="button-row tool-tabs" aria-label="选择判定工具">{tools.map(t=><button type="button" key={t.id} className="secondary-btn" aria-pressed={t.id===tool} onClick={()=>setTool(t.id)}>{t.label}</button>)}</div>

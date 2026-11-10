@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>情绪周期交易体系 · 完整判定手册</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">情</span>
+      <div class="brand-txt">
+        <h1>情绪周期交易体系</h1>
+        <p>市场 · 板块 · 个股 · 操作 —— 完整判定手册</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <a class="btn-ghost radar-return" href="../">返回曜石行情</a>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input id="searchInput" type="text" placeholder="搜索概念 / 判定 / 策略…（如：良性分歧、成龙点、补涨）" autocomplete="off">
+        <div id="searchResult" class="search-result"></div>
+      </div>
+      <button class="btn-ghost" id="btnTools">🧮 判定工具</button>
+      <button class="btn-ghost mobile-only" id="btnMenu">☰</button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ============ 侧栏 ============ -->
+    <aside class="sidebar" id="sidebar">
+      <nav id="navList"></nav>
+      <div class="sidebar-foot">
+        <div class="meter-mini">
+          <div class="meter-mini-head">
+            <span>情绪温度</span><b id="miniTempVal">--</b>
+          </div>
+          <div class="meter-bar"><i id="miniTempBar" style="width:0%"></i></div>
+          <div class="meter-mini-sub" id="miniTempTag">未测算</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ 主区 ============ -->
+    <main class="content" id="content">
+      <div id="article"></div>
+      <footer class="foot">
+        <p><b>免责声明：</b>本手册为交易方法论与研究框架整理，所有数值阈值为基于历史统计的<em>经验参考区间</em>，需随市场容量、制度与流动性环境动态校准。内容不构成任何投资建议，不推荐任何具体标的。市场有风险，决策请独立判断。</p>
+        <p class="dim">情绪周期交易体系 · 判定手册 v1.0</p>
+      </footer>
+    </main>
+
+  </div>
+</div>
+
+<!-- ============ 工具抽屉 ============ -->
+<div class="drawer-mask" id="drawerMask"></div>
+<section class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h2>🧮 判定工具箱</h2>
+    <button class="btn-ghost" id="btnCloseDrawer">✕ 关闭</button>
+  </div>
+  <p class="radar-tool-note">原版工具使用手动输入，预填值为示例。实时行情及自动判定可在曜石工作台查看。</p>
+  <div class="drawer-tabs" id="drawerTabs"></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</section>
+
+
+<script src="js/data-1-market.js"></script>
+<script src="js/data-9-refine.js"></script>
+<script src="js/data-2-sector.js"></script>
+<script src="js/data-3-stock.js"></script>
+<script src="js/data-4-trade.js"></script>
+<script src="js/data-6-cases.js"></script>
+<script src="js/data-7-verify.js"></script>
+<script src="js/data-5-quick.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/app.js"></script>
+<script src="js/site.js"></script>
+</body>
+</html>
