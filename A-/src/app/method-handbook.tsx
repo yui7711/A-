@@ -54,8 +54,9 @@ const chapters=[
  ]},
 ];
 
-export function MethodHandbook(){
+export function MethodHandbook({onToolbox}:{onToolbox:()=>void}){
  const [query,setQuery]=useState('');
+ const [showOriginal,setShowOriginal]=useState(false);
  const words=query.trim().toLowerCase().split(/\s+/).filter(Boolean);
  const visible=chapters.filter(c=>words.every(word=>[c.title,...c.entries.flat()].join(' ').toLowerCase().includes(word)));
  return <div className="method-handbook">
@@ -63,10 +64,18 @@ export function MethodHandbook(){
    <div className="panel-heading"><div><h2><BookOpen size={19}/> 情绪周期判定手册</h2><p>本站规则、证据边界与盘中复核流程。可按概念搜索，也可打开参考站完整原文。</p></div></div>
    <div className="handbook-actions">
     <label><Search size={16}/><input aria-label="搜索手册" placeholder="搜索周期、分歧、补涨、风控…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+    <button type="button" className="secondary-btn" onClick={onToolbox}>打开判定工具箱</button>
+    <button type="button" className="secondary-btn" aria-expanded={showOriginal} aria-controls="original-handbook" onClick={()=>setShowOriginal(v=>!v)}>{showOriginal?'收起站内原版':'在站内查看原版'}</button>
     <a className="secondary-btn" href={original} target="_blank" rel="noreferrer">打开完整原文 <ExternalLink size={14}/></a>
     <a className="text-btn" href={terminal} target="_blank" rel="noreferrer">参考终端 <ExternalLink size={13}/></a>
    </div>
    <nav className="handbook-index" aria-label="手册目录">{visible.map(c=><a key={c.id} href={'#method-'+c.id}>{c.title}</a>)}</nav>
+  </section>
+  <section id="original-handbook" className="panel original-handbook" hidden={!showOriginal}>
+   {showOriginal&&<>
+    <p>原版由参考站加载。也可在新标签打开原版手册与工具箱。</p>
+    <iframe title="原版情绪周期判定手册与工具箱" src={original} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin"/>
+   </>}
   </section>
   {!visible.length&&<p className="research-empty">没有匹配的章节，试试「分歧」或「主线」。</p>}
   {visible.map(c=><section key={c.id} id={'method-'+c.id} className="panel handbook-chapter">

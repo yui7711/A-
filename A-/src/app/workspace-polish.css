@@ -90,6 +90,27 @@
 .overview-tile{background:var(--focus-bg);border-color:var(--focus-line)}
 .overview-tile h3,.overview-tile .section-step,.overview-tile .overview-lines strong{color:var(--focus-ink)}
 .signal-legend{display:flex;flex-wrap:wrap;gap:6px}
+.method-shortcuts{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 15px;margin-bottom:13px}
+.method-shortcuts small{display:block;color:var(--muted);margin-top:4px}
+.judgment-toolbox h2{display:flex;align-items:center;gap:7px}
+.tool-body{padding:0 20px 20px}
+.tool-tabs,.tool-result{margin-bottom:13px}
+.tool-tabs button[aria-pressed=true]{background:var(--priority-bg);border-color:var(--priority-line);color:var(--priority-ink)}
+.tool-result{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px;border-radius:10px;background:var(--soft)}
+.tool-result p{margin:4px 0}
+.tool-score{font-size:28px;color:var(--priority-ink)}
+.tool-score small,.tool-caption,.tool-factor small,.tool-checks small{color:var(--muted);font-size:12px;line-height:1.6}
+.tool-caption{margin:10px 0 14px}
+.tool-factor,.tool-checks>div{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 10px;border-bottom:1px solid var(--line);padding:8px 2px}
+.tool-factor small{grid-column:1/-1}
+.tool-checks small{display:block;margin-top:2px}
+.tool-select,.tool-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+.tool-body select,.tool-body input[type=number]{min-width:0;border:1px solid var(--line);background:var(--soft);color:var(--text);padding:7px;border-radius:7px}
+.tool-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:10px 0}
+.tool-inputs label{display:grid;gap:4px}
+.original-handbook{margin:12px 0;padding:12px}
+.original-handbook p{color:var(--muted);margin:2px 0 10px}
+.original-handbook iframe{display:block;width:100%;height:clamp(480px,74vh,900px);border:1px solid var(--line);border-radius:10px;background:white}
 .method-live{margin:8px 0}
 .method-live h3,.handbook-intro h2{display:flex;align-items:center;gap:6px}
 .method-live p,.method-live small,.handbook-chapter dd{color:var(--secondary);line-height:1.7}
