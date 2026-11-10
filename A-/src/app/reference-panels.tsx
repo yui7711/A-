@@ -1,12 +1,14 @@
 import {useState} from 'react';
 import type {Market} from '@/lib/market-types';
-import {handbookTurning,referenceRotation,themeRoles,type Evidence} from '@/lib/reference-research';
+import {handbookTurnCandidate,handbookTurning,referenceRotation,themeRoles,type Evidence} from '@/lib/reference-research';
 import type {marketMethod} from '@/lib/market-method';
 import type {SealSnapshot} from '@/lib/closing-signals';
 import {buildClosingSignals} from '@/lib/closing-signals';
 import {buildTacticScanner} from '@/lib/tactic-scanner';
 import {assessTactics} from '@/lib/tactics';
 import {buildMainlines} from '@/lib/research';
+import {asOf,classifyRoleEvidence,closingVolumeRatio,cnMinute,middleEvidence,priorPerformance,type DecisionProof} from '@/lib/decision-proof';
+import {useDecisionProof} from './use-decision-proof';
 
 type Method=ReturnType<typeof marketMethod>;
 type Base={data:Market|null;method:Method};
@@ -17,7 +19,7 @@ const open=(onStock:(code:string,name:string)=>void,stock:{code:string;name:stri
 function EvidenceList({checks}:{checks:Evidence[]}){
  return <ul className="reference-checks">{checks.map(s=><li key={s.label}>
   <span className={'focus-pill focus-'+(s.passed===true?'positive':s.passed===false?'watch':'muted')}>{s.passed===true?'命中':s.passed===false?'未命中':'待核验'}</span>
-  <span>{s.label}{s.detail&&<small>{s.detail}</small>}</span>
+  <span>{s.label}{(s.detail||s.passed==null)&&<small>{s.detail||'缺少该规则所需的同口径历史、盘口或事件证据'}</small>}</span>
  </li>)}</ul>;
 }
 
@@ -54,10 +56,11 @@ export function TopicBoard({data,method,onStock}:Base&{onStock:(code:string,name
  </div>;
 }
 
-export function TurningBoard({data,method}:Base){
- const cards=handbookTurning(data,method);
+export function TurningBoard({data,method,proof}:Base&{proof?:DecisionProof|null}){
+ const cards=handbookTurning(data,method,proof);
+ const candidate=handbookTurnCandidate(cards,method.current.cycle.name);
  return <section className="panel reference-panel">
-  <h3>八类拐点 · 逐条核验</h3><p>每张卡分别显示命中数与证据覆盖。命中是观察线索，确认仍需手册规定的时点及数据。</p>
+  <h3>八类拐点 · 逐条核验</h3><p><strong>{candidate?`${candidate.name} · ${candidate.path} · ${candidate.yes} 项命中，待确认`:'无明确拐点候选'}</strong>。当前周期位置约束候选，确认仍需手册规定的收盘与次日证据。</p>
   <div className="reference-board">{cards.map((c,i)=>{
    const {yes,known}=tally(c.signals);
    return <details key={c.name} className={'reference-check-card focus-'+(!known?'muted':yes>=2?(i>=5?'watch':'priority'):'muted')}>
@@ -87,12 +90,18 @@ export function RotationBoard({rotation}:{rotation:ReturnType<typeof referenceRo
  </>;
 }
 
-export function RoleBoard({data,method,onStock}:Base&{onStock:(code:string,name:string)=>void}){
+export function RoleBoard({data,method,onStock,records}:Base&{onStock:(code:string,name:string)=>void;records:SealSnapshot[]}){
  const [theme,setTheme]=useState('');
+ const [code,setCode]=useState('');
  const lines=method.currentLines.length?method.current.mainlines.lines.slice(0,8):[];
  const line=lines.find(g=>g.name===theme)||lines[0];
+ const candidate=line?.stocks.find(s=>s.code===code)||line?.stocks[0];
+ const preview=line?themeRoles(line):null;
+ const proof=useDecisionProof(line?data:null,[...(candidate?[candidate.code]:[]),...(preview?.followers.map(s=>s.code)??[])],line?.name,records);
  if(!line)return <section className="panel reference-panel"><h3>主线角色与交叉验证</h3><p>等待完整且可归类的涨停名单。</p></section>;
  const {leader,middle,followers,levels}=themeRoles(line);
+ const body=data&&candidate?classifyRoleEvidence(candidate,data,proof,line.name):null;
+ const verifiedMiddle=data?middleEvidence(data,proof,line.name):null;
  const industry=data?.sources.find(s=>s.id==='eastmoney'&&s.date===data.tradeDate&&s.status==='ok');
  const fund=industry?data?.sectors.find(s=>s.name===line.name):null;
  const ladder=levels.includes(1)&&levels.includes(2)&&levels.some(n=>n>=3&&n<line.highest)&&line.highest>=5&&levels.every((n,i)=>!i||n-levels[i-1]<=2);
@@ -102,7 +111,7 @@ export function RoleBoard({data,method,onStock}:Base&{onStock:(code:string,name:
  const ladderPoints=ladder?20:line.highest===1?4:line.highest<5?12:null;
  const scoreItems=[
   ['持续性',null,25],['涨停占比',sharePoints,20],['梯队完整度',ladderPoints,20],
-  ['中军强度',null,15],['催化级别',null,10],['题材内晋级率',null,10],
+  ['中军强度',verifiedMiddle?.breakout?15:null,15],['催化级别',null,10],['题材内晋级率',null,10],
  ] as const;
  return <section className="panel reference-panel">
   <div className="reference-panel-top"><div><h3>题材内角色与交叉验证</h3><p>用技术、资金、消息、情绪四组证据检查每个题材。</p></div>
@@ -110,9 +119,26 @@ export function RoleBoard({data,method,onStock}:Base&{onStock:(code:string,name:
   </div>
   <div className="reference-board reference-board-three">
    <article className="reference-check-card focus-priority"><h4>龙头候选</h4>{leader&&<button className="text-btn" onClick={()=>open(onStock,leader)}>{leader.name} · {leader.boards} 板</button>}<small>题材内优先核对连板高度和带动性。</small></article>
-   <article className="reference-check-card focus-priority"><h4>中军线索</h4>{middle?<button className="text-btn" onClick={()=>open(onStock,middle)}>{middle.name} · {cash(middle.amount)}</button>:<p>待核验</p>}<small>取涨停样本中的成交线索，仍需全板块量价和市值确认。</small></article>
-   <article className="reference-check-card focus-priority"><h4>补涨线索</h4>{followers.length?followers.map(s=><button key={s.code} className="text-btn" onClick={()=>open(onStock,s)}>{s.name} · 首板</button>):<p>待核验</p>}<small>同题材且首封晚于高度股，后续核对是否独立走强。</small></article>
+   <article className={'reference-check-card focus-'+(verifiedMiddle?.breakout?'positive':'priority')}><h4>{verifiedMiddle?.breakout?'中军放量上攻':'中军线索'}</h4>
+    {verifiedMiddle?<><button className="text-btn" onClick={()=>open(onStock,verifiedMiddle.candidate)}>{verifiedMiddle.candidate.name} · {cash(verifiedMiddle.candidate.amount)}</button>
+     <small>东方财富行业成分与流通市值 {cash(verifiedMiddle.candidate.cap)} · 同时点报价 · 5/10/20 日均线 {verifiedMiddle.trend==null?'待同日收盘日线':verifiedMiddle.trend?'多头排列':'未呈多头排列'} · 量比 {nums(verifiedMiddle.volume,2)}</small></>:<>{middle?<button className="text-btn" onClick={()=>open(onStock,middle)}>{middle.name} · {cash(middle.amount)}</button>:<p>待核验</p>}<small>当前仅有涨停样本，缺可匹配的行业成分或同刻报价。</small></>}
+   </article>
+   <article className="reference-check-card focus-priority"><h4>补涨线索</h4>{followers.length?followers.map(s=>{
+    const vol=data?closingVolumeRatio(proof?.daily[s.code],data.tradeDate,asOf(data)):null;
+    const cap=proof?.pools.limitUp?.[s.code];
+    return <div key={s.code}><button className="text-btn" onClick={()=>open(onStock,s)}>{s.name} · {s.boards} 板 · {s.time}</button>
+     <small>量能 {vol==null?'待同日收盘日线':vol.toFixed(2)+' 倍'+(vol>=1.5?' · 达门槛':' · 未达 1.5 倍')} · 封单 / 流通市值 {cap&&s.seal!=null?(s.seal/cap*100).toFixed(2)+'%':'待市值或封单'}</small></div>;
+   }):<p>暂无匹配样本</p>}<small>高度股至少 4 板、同题材首板或二板、早盘首封。业务关联和启动前涨幅另待核验。</small></article>
   </div>
+  {body&&<section className="reference-panel">
+   <div className="reference-panel-top"><div><h3>个股自动体检</h3><p>按手册原阈值计算，选择个股即可切换证据。</p></div>
+    <label>个股 <select value={candidate?.code} onChange={e=>setCode(e.target.value)}>{line.stocks.map(s=><option value={s.code} key={s.code}>{s.name} · {s.boards} 板</option>)}</select></label>
+   </div>
+   <div className="reference-board">
+    <details className={'reference-check-card focus-'+(body.g>=12?'positive':'priority')} key={candidate?.code+'g'}><summary><b>{body.leader}</b><span className="focus-pill">{body.g}/17 命中 · {17-body.gu}/17 已核验</span></summary><EvidenceList checks={body.good}/></details>
+    <details className={'reference-check-card focus-'+(body.b>=5?'risk':body.b>0?'watch':'muted')} key={candidate?.code+'b'}><summary><b>{body.top}</b><span className="focus-pill">{body.b}/12 命中 · {12-body.bu}/12 已核验</span></summary><EvidenceList checks={body.bad}/></details>
+   </div>
+  </section>}
   <EvidenceList checks={[
    {label:'技术 · 高度与完整梯队',passed:line.highest>=5&&ladder,detail:`${line.count} 只涨停 · ${levels.join('、')} 板层级`},
    {label:'资金 · 同名行业主力净流入',passed:fund?.flow==null?null:fund.flow>0,detail:fund?.flow==null?'缺少同日同名行业数据':cash(fund.flow)},
@@ -127,19 +153,26 @@ export function RoleBoard({data,method,onStock}:Base&{onStock:(code:string,name:
  </section>;
 }
 
-export function StrategyChain({data,now,records,onStock}:{
- data:Market|null;now:number;records:SealSnapshot[];onStock:(code:string,name:string)=>void;
+export function StrategyChain({data,now,records,onStock,proof}:{
+ data:Market|null;now:number;records:SealSnapshot[];onStock:(code:string,name:string)=>void;proof?:DecisionProof|null;
 }){
  const context=assessTactics(data,now);
  const r=buildClosingSignals(data,records,now);
- const eligible=!!data&&!data.cached&&r.valid&&context.clock.live&&!context.defensive&&!context.caution&&!['冰点','衰退'].includes(context.phase);
+ const groups=data&&!data.cached&&r.valid?buildMainlines(data.stocks).lines:[];
+ const standalone=useDecisionProof(proof===undefined&&groups.length?data:null,groups.slice(0,3).flatMap(g=>g.stocks[0]?.code??[]),groups[0]?.name,records);
+ const evidence=proof??standalone;
+ const prior=data?priorPerformance(data,evidence):null;
+ const stop=prior?.largeLoss!=null&&prior.largeLoss>=7?'大面股至少 7 家':context.highest>=7?'最高板达 7 板，手册进入持有或兑现观察档':context.highest<=2?'最高板不超过 2 板':context.defensive||context.phase==='衰退'?'退潮或严重风控':null;
+ const eligible=!!data&&!data.cached&&r.valid&&!stop;
+ const actionWindow=eligible&&context.clock.live&&cnMinute(now)<870&&!context.caution;
  const risk=new Set(r.rows.filter(row=>row.tone==='risk').map(row=>row.stock.code));
  const used=new Set<string>();
- const groups=eligible?buildMainlines(data!.stocks).lines:[];
- const candidates=eligible?buildTacticScanner(context).available.filter(x=>{
+ const scan=buildTacticScanner(context);
+ const candidates=eligible?[...scan.available,...scan.waiting].filter(x=>{
   const {stock}=x;
-  const theme=groups.find(g=>g.stocks.some(s=>s.code===stock.code))?.name;
-  if(!theme||used.has(theme)||risk.has(stock.code)||stock.seal==null||stock.amount==null||stock.amount<=0
+  const group=groups.slice(0,3).find(g=>g.stocks.some(s=>s.code===stock.code));
+  const theme=group?.name;
+  if(!group||!theme||used.has(theme)||themeRoles(group).leader?.code!==stock.code||risk.has(stock.code)||classifyRoleEvidence(stock,data!,evidence,theme).b>=3||stock.seal==null||stock.amount==null||stock.amount<=0
    ||stock.seal/stock.amount<.10||stock.openTimes==null||stock.openTimes>=3)return false;
   used.add(theme);
   return true;
@@ -148,12 +181,12 @@ export function StrategyChain({data,now,records,onStock}:{
   <h3>环境 → 策略 → 个股</h3>
   <div className="reference-board reference-board-three">
    <article className="reference-check-card focus-priority"><h4>① 环境</h4><strong>{context.phase}</strong><p>{context.clock.label}</p></article>
-   <article className={'reference-check-card focus-'+context.status.color}><h4>② 策略</h4><strong>{context.status.label}</strong><p>{context.status.action}</p></article>
-   <article className={'reference-check-card focus-'+(eligible&&candidates.length?'priority':'muted')}><h4>③ 个股验证</h4><strong>{candidates.length?candidates.length+' 只通过初筛':'暂无通过初筛的样本'}</strong><p>{eligible?'每个题材最多一只，总计最多三只。':'当前环境、时段或数据条件未通过。'}</p></article>
+   <article className={'reference-check-card focus-'+(stop?'risk':context.status.color)}><h4>② 策略</h4><strong>{stop?'停止筛选':actionWindow?context.status.label:'复盘观察'}</strong><p>{stop||(!actionWindow?'尾盘、休市或分歧时仅保留观察名单。':context.status.action)}</p></article>
+   <article className={'reference-check-card focus-'+(eligible&&candidates.length?'priority':'muted')}><h4>③ 手册选股</h4><strong>{candidates.length?candidates.length+' 只前排待确认':'暂无通过初筛的样本'}</strong><p>{eligible?'仅保留前三题材各一只高度前排。题材强度须达 50 分才进入准主线；证据未齐先观察。':'当前环境或数据条件未通过。'}</p></article>
   </div>
   {candidates.map(({stock,best,score})=><div className="reference-stock-line" key={stock.code}>
    <button className="text-btn" onClick={()=>open(onStock,stock)}>{stock.name} · {stock.boards} 板</button>
-   <strong>{best.name} · {score} 分</strong><small>触发需核验题材联动与盘口承接；若出现核心封单警示或承接失效，退出观察清单。</small>
+   <strong>{best.name} · {score} 分</strong><small>按手册分层初筛；触发需核验题材联动与盘口承接。命中 3 项见顶信号、核心封单警示或承接失效时剔除。</small>
   </div>)}
  </section>;
 }

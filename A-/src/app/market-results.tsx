@@ -4,6 +4,7 @@ import {buildClosingSignals,type SealSnapshot} from '@/lib/closing-signals';
 import {emotionStages} from '@/lib/emotion-cycle';
 import {marketMethod} from '@/lib/market-method';
 import {referenceRotation} from '@/lib/reference-research';
+import {priorPerformance} from '@/lib/decision-proof';
 import type {Market} from '@/lib/market-types';
 import {buildResearch} from '@/lib/research';
 import {assessTactics} from '@/lib/tactics';
@@ -13,6 +14,7 @@ import {RoleBoard,RotationBoard,StrategyChain,TopicBoard,TurningBoard} from './r
 import {ArchivedArticle,ArchivedPlan} from './review-workspace';
 import {SignalLegend} from './signal-legend';
 import TacticsPanel from './tactics-panel';
+import {useDecisionProof} from './use-decision-proof';
 
 const sections=[
  {id:'cycle',label:'周期判定',icon:Activity},
@@ -24,6 +26,15 @@ const sections=[
  {id:'report',label:'复盘报告',icon:BookOpen},
 ] as const;
 type Section=typeof sections[number]['id'];
+const handbook:Record<Section,{chapters:[string,string][];tools:[string,string][]}>={
+ cycle:{chapters:[['market-cycle','情绪周期八阶段'],['thermo','情绪温度计']],tools:[['locate','周期阶段定位器'],['thermo','情绪温度计']]},
+ topics:{chapters:[['sector-cycle','题材周期'],['mainline','主线识别']],tools:[['mainline','主线强度评分器']]},
+ turn:{chapters:[['turning','八类拐点']],tools:[['diverge','良性 / 恶性分歧判定']]},
+ rotation:{chapters:[['switch','主线切换'],['mainline','主线识别']],tools:[['mainline','主线强度评分器']]},
+ roles:{chapters:[['dragon','龙头'],['zhongjun','中军'],['buzhang','补涨']],tools:[['dragon','龙头体检表']]},
+ plan:{chapters:[['methods','战法'],['position','仓位管理'],['risk','风险管理']],tools:[['diverge','良性 / 恶性分歧判定'],['dragon','龙头体检表']]},
+ report:{chapters:[['quickref','速查与复盘']],tools:[['thermo','情绪温度计'],['locate','周期阶段定位器']]},
+};
 type Tone='priority'|'positive'|'watch'|'risk'|'muted';
 type Metric={label:string;value:string;detail:string;tone?:Tone};
 type Report={market:Market;now:number;slot:SealSnapshot['slot']};
@@ -63,6 +74,11 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
  const r=method.current;
  const valid=!!data&&!data.cached&&!r.blocked;
  const lead=method.currentLines[0];
+ const reportLead=section==='report'&&report?marketMethod(report.market,report.now,records).currentLines[0]:null;
+ const proof=useDecisionProof(section==='report'?report?.market??null:valid&&['cycle','turn','rotation','plan'].includes(section)?data:null,
+  section==='report'||section==='plan'?((reportLead??lead)?.stocks.slice(0,2).map(s=>s.code)??[]):[],
+  section==='rotation'||section==='plan'?lead?.name:reportLead?.name,records);
+ const prior=valid&&data?priorPerformance(data,proof):null;
  const old=method.previousLines[0];
  const closing=buildClosingSignals(valid?data:null,records,now);
  const period=archivePeriod??(context.clock.phase==='lunch'?'noon':'late');
@@ -80,6 +96,8 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
     description={valid?r.conclusion:context.dataIssue||'行情等待校验。'}
     metrics={[{label:'情绪六维',value:valid&&r.average!=null?r.average.toFixed(1)+' / 10':'—',detail:valid?`${r.known}/6 维有数据`:'暂无有效评分'},...commonMetrics(r,valid),
      {label:'高标危险信号',value:valid?count(closing.riskCount,'只'):'—',detail:closing.high.find(row=>row.tone==='risk')?.signals[0]?.label||'见拐点识别内的封单明细',tone:closing.riskCount?'risk':'priority'}]}/>
+    <section className="panel reference-panel"><h3>昨日涨停股反馈</h3><p>平均溢价 {prior?.premium==null?'待核验':prior.premium.toFixed(2)+'%'} · 大面股 {count(prior?.largeLoss,'家')} · 首板晋级 {percent(prior?.firstPromotion)} · 连板晋级 {percent(prior?.promotion)}</p>
+     <small>{prior?.total?`腾讯及备用源同刻报价 ${prior.coverage}/${prior.total} 只。溢价和大面股须完整覆盖，晋级率按两日涨停名单逐股比对。`:'缺上一交易日完整涨停名单或当前报价尚在核验。'}</small></section>
     <Evidence title="查看情绪周期、六维评分与辅助信号"><SentimentPanel data={data} now={now}/><AuxiliaryPanel data={data} now={now}/></Evidence></>;
    break;
   case 'topics':
@@ -97,12 +115,12 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'炸板率变化',value:delta(method.blastDelta==null?null:method.blastDelta*100,'个百分点',1),detail:'当前减基准',tone:method.blastDelta!=null&&method.blastDelta>0?'watch':'priority'},
      {label:'最高板变化',value:delta(method.heightDelta,'板'),detail:'非 ST 梯队'},
     ]}/>
-    <TurningBoard data={data} method={method}/>
+    <TurningBoard data={data} method={method} proof={proof}/>
     <Evidence title="展开午盘、尾盘封单证据"><ClosingWarningPanel {...modelProps} archiveView={!!archivePeriod} period={archivePeriod}/></Evidence></>;
    break;
   case 'rotation': {
-   const rotation=referenceRotation(data,method,records);
-   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':rotation.confirmed?'主线切换已确认':method.switchCandidate?'主线切换候选':method.switched?'榜首变动 · 待确认':'首位主线延续'}
+   const rotation=referenceRotation(data,method,records,proof);
+   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':rotation.confirmed?'主线切换已确认':method.switched?'旧主线延续 · 新方向待核验':'首位主线延续'}
     tone={!lead||!old?'muted':method.switched?'watch':'priority'}
     description="榜首变化先列为线索，再按旧线衰退、新线成立和终局三组选项核验。"
     metrics={[
@@ -121,7 +139,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'高度龙头候选',value:lead?.stocks[0]?.name||'—',detail:lead?`${lead.highest} 板 · 题材内按板数优先`:'等待样本'},
      {label:'高标危险信号',value:valid?count(closing.riskCount,'只'):'—',detail:'当前完整池的高标警示',tone:closing.riskCount?'risk':'priority'},
     ]}/>
-    <RoleBoard data={data} method={method} onStock={onStock}/>
+    <RoleBoard data={data} method={method} onStock={onStock} records={records}/>
     <Evidence title="展开高标个股、封单与下一时段观察"><ClosingWatchPanel {...modelProps} period={archivePeriod}/></Evidence></>;
    break;
   case 'plan':
@@ -133,7 +151,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'严重风险',value:valid?count(r.risk.stops.length,'项'):'—',detail:r.risk.stops[0]||'按本站规则核验',tone:r.defensive?'risk':'priority'},
      {label:'炸板率',value:valid?percent(r.blast):'—',detail:'结合封板质量判断',tone:blastTone},
     ]}/>
-    <StrategyChain {...modelProps}/>
+    <StrategyChain {...modelProps} proof={proof}/>
     {archivePeriod&&data?<ArchivedPlan data={data} now={now} records={records} slot={period}/>:<PlanPanel data={data} now={now} period={period==='noon'?'下午':'下一交易日'}/>}
     <Evidence title="展开三大战法与三合一扫描"><TacticsPanel data={data} now={now} expanded onStock={onStock}/></Evidence></>;
    break;
@@ -149,7 +167,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
       aria-pressed={report?.market.tradeDate===s.date&&report.slot===s.slot}>{s.date} · {s.slot==='noon'?'午盘':'收盘'}</button>)}</div>
      {!archives.length&&<p>暂无已归档报告。</p>}
     </section>
-    {report&&<ArchivedArticle key={report.market.tradeDate+report.slot} data={report.market} now={report.now} records={records.filter(s=>s.origin==='cloud')} slot={report.slot}/>}</>;
+    {report&&<ArchivedArticle key={report.market.tradeDate+report.slot} data={report.market} now={report.now} records={records.filter(s=>s.origin==='cloud')} slot={report.slot} proof={proof}/>}</>;
    break;
   }
  }
@@ -161,5 +179,13 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
   </nav>
   {controls}
   {panel}
+  <div key={section} className="reference-board">
+   <Evidence title="查阅本项手册章节"><div className="reference-archive">{handbook[section].chapters.map(([id,label])=><a key={id} className="text-btn" href={'./handbook/index.html#ch-'+id} target="_blank" rel="noreferrer">{label} ↗</a>)}</div></Evidence>
+   <Evidence title="打开本项判定工具"><div className="reference-archive">{handbook[section].tools.map(([id,label])=>{
+    const date=section==='report'?report?.market.tradeDate:archivePeriod?data?.tradeDate:null;
+    const slot=section==='report'?report?.slot:archivePeriod;
+    return <a key={id} className="text-btn" href={'./handbook/index.html?tool='+id+(date&&slot?'&date='+date+'&slot='+slot:'')} target="_blank" rel="noreferrer">{label} ↗</a>;
+   })}</div></Evidence>
+  </div>
  </div>;
 }

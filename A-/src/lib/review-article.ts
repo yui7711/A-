@@ -5,12 +5,13 @@ import {buildResearch} from './research.ts';
 import {assessTactics} from './tactics.ts';
 import {marketMethod} from './market-method.ts';
 import {handbookTurning,referenceRotation,themeRoles} from './reference-research.ts';
+import {classifyRoleEvidence,middleEvidence,priorPerformance,type DecisionProof} from './decision-proof.ts';
 
 const percent=(n:number|null)=>n==null?'待核验':(n*100).toFixed(1)+'%';
 const price=(n:number|null|undefined)=>n==null?'待核验':n.toFixed(2);
 const time=(n:number)=>Number.isFinite(n)?new Date(n).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'待核验';
 
-export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number,slot:SealSnapshot['slot']){
+export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number,slot:SealSnapshot['slot'],proof?:DecisionProof|null){
  const tactics=assessTactics(data,now);
  const r=buildResearch(data,tactics);
  const closing=buildClosingSignals(data,records,now);
@@ -45,16 +46,21 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
  sections[0].lines.push(turning);
  sections[4].lines.push(rotation);
  if(!r.blocked&&!data.cached){
-  const flags=handbookTurning(data,method).map(t=>({name:t.name,yes:t.signals.filter(s=>s.passed===true).length,known:t.signals.filter(s=>s.passed!=null).length,total:t.signals.length})).filter(t=>t.yes>=2);
+  const prior=priorPerformance(data,proof);
+  sections[1].lines.push(`昨日涨停溢价 ${prior.premium==null?'待核验':prior.premium.toFixed(2)+'%'} · 大面股 ${prior.largeLoss??'待核验'} · 同刻报价 ${prior.coverage}/${prior.total} 只 · 首板晋级 ${percent(prior.firstPromotion)}`);
+  const flags=handbookTurning(data,method,proof).map(t=>({name:t.name,yes:t.signals.filter(s=>s.passed===true).length,known:t.signals.filter(s=>s.passed!=null).length,total:t.signals.length})).filter(t=>t.yes>=2);
   sections[2].lines.push(...(flags.length?flags.map(t=>`${t.name} · 命中 ${t.yes} · 已核验 ${t.known}/${t.total} · 待后续确认`):['八类拐点中暂无两项以上同类信号命中']));
-  const rotationEvidence=referenceRotation(data,method,records);
+  const rotationEvidence=referenceRotation(data,method,records,proof);
+  if(rotationEvidence.confirmed)sections[4].lines.push('主线切换 · 已通过旧线、新线与终局三道门槛');
   if(rotationEvidence.dates.length>1){
    sections[4].lines.push(`题材趋势 · ${rotationEvidence.trendSource} · ${rotationEvidence.dates.join(' / ')}`);
    sections[4].lines.push(...rotationEvidence.trend.slice(0,4).map(t=>t.name+' · '+t.counts.map(n=>n??'—').join(' / ')));
   }
   for(const g of method.currentLines.slice(0,3)){
    const role=themeRoles(g);
-   sections[6].lines.push(`${g.name} · 高度龙头候选 ${role.leader?.name||'待核验'} · 中军成交线索 ${role.middle?.name||'待核验'} · 补涨线索 ${role.followers.map(s=>s.name).join('、')||'待核验'}`);
+   const result=role.leader?classifyRoleEvidence(role.leader,data,proof,g.name):null;
+   const middle=middleEvidence(data,proof,g.name);
+   sections[6].lines.push(`${g.name} · ${role.leader?.name||'高度样本待核验'}${result?` · ${result.leader} ${result.g}/17 · ${result.top} ${result.b}/12`:''} · 中军成交线索 ${middle?.candidate.name||role.middle?.name||'待核验'} · 补涨线索 ${role.followers.map(s=>s.name).join('、')||'待核验'}`);
   }
  }
  const title=`${date} 曜石市场复盘 · ${label}版`;

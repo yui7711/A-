@@ -24,13 +24,14 @@ export function handbookMarketData(snapshot:SealSnapshot){
   name:g.name,
   ratio:percent(g.count,pool.length),
   onlyFirst:g.highest===1,
+  levels:[...new Set(g.stocks.map(s=>s.boards))].sort((a,b)=>a-b),
  })): [];
  return {
   date:snapshot.date,valid:true,source:snapshot.source,
   time:snapshot.at,
   timeBasis:(snapshot.slot==='noon'?'午盘':'收盘')+(snapshot.basis==='source'?'源时点':'采集时点'),
   fields,themes,
-  stocks:pool.filter(s=>!s.isST).map(({code,name,boards,turnover})=>({code,name,boards,turnover})),
+  stocks:pool.filter(s=>!s.isST).sort((a,b)=>b.boards-a.boards).map(({code,name,boards,turnover})=>({code,name,boards,turnover})),
  };
 }
 

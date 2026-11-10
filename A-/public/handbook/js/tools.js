@@ -8,7 +8,7 @@
     { id: 'thermo', name: '🌡️ 情绪温度计', title: '情绪温度测算', desc: '输入当日九项核心数据，系统自动换算为 0–100 的情绪温度，并给出阶段定位、建议仓位与操作要点。' },
     { id: 'mainline', name: '🎯 主线强度', title: '主线强度评分', desc: '对目标板块的六个维度打分，判定它是主线、支线还是一日游。' },
     { id: 'diverge', name: '⚖️ 分歧性质', title: '良性 / 恶性分歧判定', desc: '逐项判定分歧的十二个维度，得出「良性 / 中性 / 恶性」结论与对应操作。' },
-    { id: 'dragon', name: '🐉 龙头体检', title: '龙头体检表', desc: '勾选候选龙头符合的特征与命中的见顶信号，判定真龙成色与风险等级。' },
+    { id: 'dragon', name: '🐉 龙头体检', title: '龙头体检表', desc: '用候选股行情自动核验龙头特征和见顶信号，显示成色与风险等级。' },
     { id: 'locate', name: '🧭 周期定位', title: '周期阶段定位器', desc: '回答六个问题，快速定位当前所处的情绪周期阶段。' }
   ];
 
@@ -306,7 +306,7 @@
   }
 
   function renderDragon(el) {
-    var h = '<div class="tool-title">龙头体检表</div><div class="tool-desc">勾选候选龙头<b>符合</b>的特征（共 17 项），并勾选<b>已命中</b>的见顶信号（共 12 项）。</div>';
+    var h = '<div class="tool-title">龙头体检表</div><div class="tool-desc">选择个股后自动核验 17 项龙头成色与 12 项见顶信号。各项状态和缺证原因随行情更新。</div>';
     h += '<h5 class="sub2" style="color:var(--cyan)">一、龙头成色（符合项）</h5><div class="chk-grid">' +
       DR_GOOD.map(function (x, i) {
         return '<label class="chk"><input type="checkbox" id="dg_' + i + '"><span>' + x + '</span></label>';

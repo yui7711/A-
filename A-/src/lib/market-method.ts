@@ -18,6 +18,8 @@ export function marketMethod(data:Market|null,now:number,records:SealSnapshot[])
  const afternoon=Number.isFinite(at)&&minute(at)>=810;
  const noon=latest(options.filter(s=>afternoon&&s.date===data!.tradeDate&&s.slot==='noon'));
  const prior=latest(options.filter(s=>s.date<data!.tradeDate!&&s.slot==='late'));
+ const priorResearch=prior?.market&&prior.date===data?.research?.previousDate
+  ?buildResearch(prior.market,assessTactics(prior.market,Date.parse(prior.date+'T16:30:00+08:00'))):null;
  const baseline=noon??prior;
  const baselineNow=baseline?Date.parse(baseline.date+(baseline.slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00'):0;
  const earlier=baseline?.market&&!baseline.market.cached?buildResearch(baseline.market,assessTactics(baseline.market,baselineNow)):null;
@@ -37,5 +39,6 @@ export function marketMethod(data:Market|null,now:number,records:SealSnapshot[])
  const oldWeakened=oldCurrent?oldCurrent.count<oldTop!.count:current.mainlines.unclassified===0;
  const switchCandidate=switched&&top.count>=5&&top.ladder>0&&oldWeakened;
  return {current,source,at,baseline:comparable?baseline:null,earlier:comparable?earlier:null,blastDelta,widthDelta,heightDelta,improves,weakens,
-  previousLines,currentLines,switched,switchCandidate,themeBaseline:canCompareThemes?baseline?.date:current.history.prior?.date};
+  previousLines,currentLines,switched,switchCandidate,priorClose:priorResearch&&!priorResearch.blocked?priorResearch:null,
+  themeBaseline:canCompareThemes?baseline?.date:current.history.prior?.date};
 }

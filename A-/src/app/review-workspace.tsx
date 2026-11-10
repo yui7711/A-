@@ -3,6 +3,7 @@ import {BookOpen,CalendarDays,Copy,Download,Target} from 'lucide-react';
 import {buildClosingSignals,type SealSnapshot} from '@/lib/closing-signals';
 import type {Market} from '@/lib/market-types';
 import {buildReviewArticle,reviewHtml,reviewText} from '@/lib/review-article';
+import type {DecisionProof} from '@/lib/decision-proof';
 import {selectReviewSnapshot,type SealArchive} from '@/lib/seal-archive';
 import {marketClock} from '@/lib/tactics';
 import {PlanPanel} from './research-panels';
@@ -66,8 +67,8 @@ export function ArchivedPlan({data,now,records,slot}:{data:Market;now:number;rec
  </>;
 }
 
-export function ArchivedArticle({data,now,records,slot}:{data:Market;now:number;records:SealSnapshot[];slot:Slot}){
- const article=buildReviewArticle(data,records,now,slot);
+export function ArchivedArticle({data,now,records,slot,proof}:{data:Market;now:number;records:SealSnapshot[];slot:Slot;proof?:DecisionProof|null}){
+ const article=buildReviewArticle(data,records,now,slot,proof);
  const [copied,setCopied]=useState(false);
  const [showText,setShowText]=useState(false);
  const copy=async()=>{try{await navigator.clipboard.writeText(reviewText(article));setCopied(true);setTimeout(()=>setCopied(false),1800);}catch{setShowText(true);}};

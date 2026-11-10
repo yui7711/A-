@@ -6,12 +6,43 @@ import {nextOutlook} from '../src/lib/next-outlook.ts';
 import {marketMethod} from '../src/lib/market-method.ts';
 import {handbookTurning,referenceRotation} from '../src/lib/reference-research.ts';
 import {handbookMarketData,latestHandbookMarket} from '../src/lib/handbook-market-data.ts';
+import {classifyRoleEvidence,emptyPools,priorPerformance,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
 const at=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const key='sk-fuyao-test_key_only_1234567890';
 const empty={version:1,generatedAt:'',records:[],runs:[]};
 const stock=x=>({code:'000001',name:'测试',boards:5,seal:1e8,amount:1e9,maxSeal:1e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:30',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){return {fetchedAt:new Date(at(t)).toISOString(),tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTotal:1,poolTimestamp:null,stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:1})),themes:[],sectors:[],hot:[],sources:[],lhb:[],lhbDate:null,stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};};
+test('same-session prior feedback never treats missing or afternoon quotes as a noon result',()=>{
+ const a=stock({code:'000001',boards:2}),b=stock({code:'000002',boards:1});
+ const d=market('11:30',{stocks:[stock({code:'000001',boards:3}),stock({code:'000002',boards:2})],
+  poolTotal:2,stats:{up:2,down:0,opened:0,sealRate:1}});
+ const p={date:d.tradeDate,at:at('11:30'),previousDate:'2026-11-05',prior:[a,b],daily:{},pools:emptyPools,
+  quotes:[{code:'sz000001',time:'20261106113000',change:4},{code:'sz000002',time:'20261106150100',change:-9.1}]};
+ assert.deepEqual(priorPerformance(d,p),{premium:null,largeLoss:null,promotion:1,firstPromotion:1,coverage:1,total:2});
+ p.quotes[1].time='20261106113000';
+ const complete=priorPerformance(d,p);
+ assert.equal(complete.largeLoss,1);
+ assert.ok(Math.abs(complete.premium+2.55)<1e-8);
+});
+test('role evidence uses genuine close and preserves missing values',()=>{
+ const d=market('15:01');
+ const candidate=d.stocks[0];
+ const p={date:d.tradeDate,at:at('15:01'),previousDate:null,prior:[],quotes:[],pools:{...emptyPools,limitUp:{'000001':55e8}},daily:{}};
+ const result=classifyRoleEvidence(candidate,d,p,'半导体');
+ assert.deepEqual([result.good.length,result.bad.length],[17,12]);
+ assert.equal(result.good[6].passed,false);
+ assert.equal(result.good[12].passed,true);
+ assert.equal(result.bad[0].passed,null);
+ assert.equal(result.b,0);
+ assert.equal(result.top,'见顶证据待核验');
+ const previous='2026-11-05';
+ const old={...d,tradeDate:previous,poolDate:previous};
+ const current={...d,research:{tradeDate:d.tradeDate,previousDate:previous,previousPool:null}};
+ const fallback={origin:'cloud',source:'东方财富',date:previous,slot:'late',at:Date.parse(previous+'T15:01:00+08:00'),market:old};
+ assert.equal(withPreviousSnapshot(current,[fallback]).research.previousPool.total,1);
+ assert.equal(withPreviousSnapshot(current,[{...fallback,slot:'noon'}]).research.previousPool,null);
+});
 test('reference evidence keeps unsupported checklist entries unknown and does not confirm rotation on a changed leader alone',()=>{
  const noon=cloudSnapshot(market('11:30',{stats:{up:1,down:1,opened:2,sealRate:1/3}}),'noon',at('11:30'));
  const stocks=Array.from({length:5},(_,i)=>stock({code:String(i+1).padStart(6,'0'),themes:['机器人'],boards:i===0?2:1}));
