@@ -23,7 +23,7 @@ function EvidenceList({checks}:{checks:Evidence[]}){
  </li>)}</ul>;
 }
 
-export function TopicBoard({data,method,onStock}:Base&{onStock:(code:string,name:string)=>void}){
+export function TopicBoard({data,method,onStock,records}:Base&{onStock:(code:string,name:string)=>void;records:SealSnapshot[]}){
  const valid=!!data&&!data.cached&&!method.current.blocked;
  const lines=valid?method.current.mainlines.lines.slice(0,12):[];
  const max=Math.max(1,...lines.map(s=>s.count));
@@ -34,9 +34,12 @@ export function TopicBoard({data,method,onStock}:Base&{onStock:(code:string,name
  return <div className="reference-board">
   <section className="panel reference-panel">
    <h3>涨停题材榜</h3><p>去除 ST 和噪声，同题材同股去重。代表股可点开核对。</p>
-   <div className="reference-bars">{lines.map(g=><div key={g.name}>
+   <div className="reference-bars">{lines.map((g,i)=><div key={g.name}>
     <strong>{g.name}</strong><span className="reference-bar" aria-label={g.count+' 只涨停'}><i style={{width:g.count/max*100+'%'}}/></span>
-    <b>{g.count} 只</b><small>最高 {g.highest} 板 · {g.stocks.slice(0,3).map(s=>s.name).join('、')}</small>
+    <b>{g.count} 只</b><small>最高 {g.highest} 板 · {g.stocks.slice(0,3).map(s=>s.name).join('、')}{i<3&&data&&(()=>{
+     const rank=handbookThemeScore(data,g,records);
+     return ` · 手册分数范围 ${rank.lower}–${rank.upper}（${rank.verified}/6 项已核验）`;
+    })()}</small>
    </div>)}</div>
    {!lines.length&&<p>等待完整有效的涨停池。</p>}
   </section>

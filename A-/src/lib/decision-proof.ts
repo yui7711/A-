@@ -76,7 +76,8 @@ export function priorPerformance(data:Market,proof?:DecisionProof|null){
 
 export function sessionMinuteEvidence(history:History|undefined,date:string|null,at:number){
  if(!history||history.date!==date)return null;
- const cutoff=Math.min(cnMinute(at),900);
+ const minute=cnMinute(at);
+ const cutoff=minute>=690&&minute<780?690:Math.min(minute,900);
  const points=history.points.map(p=>({...p,minute:Number(p.time.slice(0,2))*60+Number(p.time.slice(3,5))}))
   .filter(p=>p.minute>=570&&p.minute<=cutoff&&(p.minute<=690||p.minute>=780));
  const first=points[0],last=points.at(-1);

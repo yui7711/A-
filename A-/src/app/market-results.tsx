@@ -103,7 +103,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
    panel=<><ResultCard title="题材热点 · 去噪排名" result={lead?lead.name+' 暂列首位':'题材数据待核验'} tone={lead?'priority':'muted'}
     description={lead?'按产业归并、同题材同股去重。热度结合涨停数、最高板和连板层级。':'等待有效涨停名单及题材归类。'}
     metrics={method.currentLines.length?method.currentLines.map((g,i)=>({label:`TOP ${i+1} · ${g.name}`,value:count(g.count,'只涨停'),detail:`热度 ${g.heat}/100 · 最高 ${g.highest} 板`})):[{label:'主线样本',value:'—',detail:'尚未取得有效名单'}]}/>
-    <TopicBoard data={data} method={method} onStock={onStock}/></>;
+    <TopicBoard data={data} method={method} onStock={onStock} records={records}/></>;
    break;
   case 'turn':
    panel=<><ResultCard title="拐点识别 · 同源对照" result={!method.baseline?'拐点待核验':method.improves?'出现修复线索':method.weakens?'出现降温线索':'指标方向未形成共振'}

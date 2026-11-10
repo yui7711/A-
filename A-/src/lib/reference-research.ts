@@ -68,7 +68,7 @@ export function referenceRotation(data:Market|null,m:Method,records:SealSnapshot
  const consecutive=(n:number)=>{
   if(!current||history.length<n-1)return null;
   const rows=[...history.slice(1-n),current];
-  return rows.every((row,i)=>row.lines.unclassified===0&&(i===0||row.previous===rows[i-1].date))?rows:null;
+  return rows.every((row,i)=>i===0||row.previous===rows[i-1].date)?rows:null;
  };
  const three=consecutive(3),two=consecutive(2);
  const newName=top?.name,oldName=old?.name,different=!!top&&!!old&&newName!==oldName;
@@ -96,14 +96,15 @@ export function referenceRotation(data:Market|null,m:Method,records:SealSnapshot
  const born=[
   check('新方向连续三个交易日出现涨停',different?stable(values=>values.every(v=>v>0)):null),
   check('新方向至少 3 板，且高标题材归属已核验',different&&top!.highest<3?false:null,different?`当前最高 ${top!.highest} 板，题材纯度需核验`:undefined),
-  check('新方向涨停至少 5 家且逐日增加',different&&top!.count<5?false:different?stable(values=>values.every((v,i)=>!i||v>values[i-1])):null),
+  check('新方向涨停至少 5 家且逐日增加',different&&three?.every(row=>row.lines.unclassified===0)?stable(values=>values.at(-1)!>=5&&values.every((v,i)=>!i||v>values[i-1])):null,
+   '需连续三日、同口径且归类完整的涨停名单'),
   check('新方向同时有二板和首板',different?top!.stocks.some(s=>s.boards===1)&&top!.stocks.some(s=>s.boards===2):null),
   check('中大市值中军放量启动',different&&data&&newName?middleEvidence(data,sameProof,newName)?.breakout??null:null,'需板块成交前列、流通市值、同日上涨、五日均量及均线证据'),check('有可验证的持续催化',null,'需公告或产业事件、发布时间及题材关联'),
-  check('新方向涨停数超过旧方向',different&&oldCurrent!=null?top!.count>oldCurrent:null),
+  check('新方向涨停数超过旧方向',different&&oldCurrent!=null&&current?.lines.unclassified===0?top!.count>oldCurrent:null),
  ];
  const final=[
   check('新方向高度超过旧线退潮时的高度'),
-  check('新方向涨停数连续两日超过旧方向',different&&two?(()=>{
+  check('新方向涨停数连续两日超过旧方向',different&&two?.every(row=>row.lines.unclassified===0)?(()=>{
    const pairs=two.map(row=>[byName(row.lines,newName!),byName(row.lines,oldName!)]);
    return pairs.every(([a,b])=>a!=null&&b!=null)?pairs.every(([a,b])=>a!>b!):null;
   })():null),
