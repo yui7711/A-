@@ -12,20 +12,18 @@ import TacticsPanel from './tactics-panel';
 import FuyaoConnection from './fuyao-connection';
 import {restoreFuyaoDirect,hasFuyaoDirect} from '@/lib/fuyao-direct';
 import FuyaoKeyDialog from './fuyao-key-dialog';
-import {SentimentPanel,MainlinePanel,AuxiliaryPanel} from './research-panels';
-import {ClosingWarningPanel,ClosingWatchPanel,useSealObservations} from './closing-panels';
+import {useSealObservations} from './closing-panels';
 import {assessTactics} from '@/lib/tactics';
 import {selectReviewSnapshot} from '@/lib/seal-archive';
 import {ArchiveControls,ArchivedPlan,ArchivedArticle} from './review-workspace';
-import {OverviewSummary} from './overview-summary';
-import {MarketMethodPanel} from './market-method-panel';
+import {MarketResults} from './market-results';
 import {MethodHandbook} from './method-handbook';
 import {JudgmentToolbox} from './judgment-toolbox';
 import {HandbookWorkbench} from './handbook-workbench';
 import {requestJSON,fetchSectorFallback} from '@/lib/client-request';
 
 const nav=[{id:'overview',name:'市场总览',icon:LayoutDashboard},{id:'full-handbook',name:'完整手册',icon:BookOpen},{id:'original-tools',name:'原版判定工具箱',icon:Calculator},{id:'plan',name:'复盘计划',icon:ShieldCheck},{id:'article',name:'复盘文章',icon:BookOpen},{id:'tactics',name:'三大战法',icon:Zap},{id:'radar',name:'强势雷达',icon:Radio},{id:'ladder',name:'连板梯队',icon:Layers},{id:'lhb',name:'龙虎榜',icon:Activity},{id:'watch',name:'我的自选',icon:Star},{id:'review',name:'复盘笔记',icon:BookOpen}];
-const titles:Record<string,[string,string]>={toolbox:['把当前行情代入判定。','五项工具共用行情与归档，支持手动补充证据。'],handbook:['把行情判断变成可复查的规则。','市场周期、题材角色、操作研究与复盘速查。'],plan:['把结论写成可验证的计划。','按交易日与午盘、收盘快照核验观察条件。'],article:['行情复盘，按时段归档。','从同一份快照生成文章，支持复制全文和下载。'],tactics:['让战法，匹配当前行情。','先看三合一扫描，再按观察分核验龙头、换手与弱转强。'],overview:['看清情绪，聚焦主线。','把复杂行情，变成清晰的观察。'],radar:['发现强势，也看见风险。','基于真实涨停池的规则筛选，每一分都有依据。'],ladder:['从首板，到市场高度。','观察梯队结构，理解情绪的延续与分歧。'],lhb:['沿着资金，寻找线索。','按实际披露日期展示，保留不同统计周期。'],watch:['只关注，你在意的。','自选保存在当前浏览器，支持通达信文件导入。'],review:['让每次观察，都有沉淀。','记录市场、主线与待验证的条件。'],sources:['数据透明，判断才清晰。','每一个数字，都有来源、时点和边界。'],references:['多种视角，一个工作台。','参考站分析与功能融合说明。']};
+const titles:Record<string,[string,string]>={toolbox:['把当前行情代入判定。','五项工具共用行情与归档，支持手动补充证据。'],handbook:['把行情判断变成可复查的规则。','市场周期、题材角色、操作研究与复盘速查。'],plan:['把结论写成可验证的计划。','按交易日与午盘、收盘快照核验观察条件。'],article:['行情复盘，按时段归档。','从同一份快照生成文章，支持复制全文和下载。'],tactics:['让战法，匹配当前行情。','先看三合一扫描，再按观察分核验龙头、换手与弱转强。'],overview:['先看结果，再查依据。','周期、题材、主线、策略和复盘，按七个视图切换。'],radar:['发现强势，也看见风险。','基于真实涨停池的规则筛选，每一分都有依据。'],ladder:['从首板，到市场高度。','观察梯队结构，理解情绪的延续与分歧。'],lhb:['沿着资金，寻找线索。','按实际披露日期展示，保留不同统计周期。'],watch:['只关注，你在意的。','自选保存在当前浏览器，支持通达信文件导入。'],review:['让每次观察，都有沉淀。','记录市场、主线与待验证的条件。'],sources:['数据透明，判断才清晰。','每一个数字，都有来源、时点和边界。'],references:['多种视角，一个工作台。','参考站分析与功能融合说明。']};
 const fmt=(n:number|null|undefined,d=2)=>n===null||n===undefined?'—':n.toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=(n:number|null|undefined)=>n===null||n===undefined?'—':`${n>=0?'+':''}${fmt(n)}%`;
 const money=(n:number|null|undefined)=>n===null||n===undefined?'—':Math.abs(n)>=1e8?`${fmt(n/1e8)}亿`:`${fmt(n/1e4,0)}万`;
@@ -58,7 +56,6 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  const [keyPanelOpen,setKeyPanelOpen]=useState(false);
  const [requestAt,setRequestAt]=useState<number|null>(null);
  const [reviewSlot,setReviewSlot]=useState<'noon'|'late'|null>(null);
- const [overviewTab,setOverviewTab]=useState<'stocks'|'seals'>('stocks');
  const inFlight=useRef(false),fileRef=useRef<HTMLInputElement>(null),searchRef=useRef<HTMLInputElement>(null),keyRef=useRef(''),dataRef=useRef<Market|null>(initialData),noteRef=useRef(false),refreshDue=useRef(0);
  useEffect(()=>{if(!data)return;const controller=new AbortController(),identity=data.fetchedAt;void enrichMarketFields(data,controller.signal).then(enriched=>{if(enriched===data||controller.signal.aborted)return;setData(previous=>{if(!previous||previous.fetchedAt!==identity)return previous;const next={...previous,stocks:enriched.stocks};dataRef.current=next;return next;});});return()=>controller.abort();},[data?.fetchedAt]);
  useEffect(()=>{if(!selected)return;const before=document.activeElement as HTMLElement|null;const old=document.body.style.overflow;document.body.style.overflow='hidden';const root=document.querySelector('.detail-modal');const focusable=()=>Array.from(root?.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input,select,textarea,[tabindex="0"]')||[]);focusable()[0]?.focus();const trap=(e:KeyboardEvent)=>{if(e.key!=='Tab')return;const nodes=focusable(),first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}};document.addEventListener('keydown',trap);return()=>{document.body.style.overflow=old;document.removeEventListener('keydown',trap);before?.focus();};},[selected?.code]);
@@ -120,6 +117,14 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  const slot=reviewSlot||newestSlot;
  const snapshot=selectReviewSnapshot(sealRecords,reviewDate,slot);
  const archiveNow=Date.parse(reviewDate+(slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00');
+ const lastReportDate=sealRecords.filter(s=>s.origin==='cloud'&&s.market&&s.date<=today).map(s=>s.date).sort().at(-1);
+ const latestReport=lastReportDate&&(selectReviewSnapshot(sealRecords,lastReportDate,'late')||selectReviewSnapshot(sealRecords,lastReportDate,'noon'));
+ const reportSnapshot=archiveView?snapshot:snapshot||latestReport;
+ const overviewReport=reportSnapshot?.market?{
+  market:reportSnapshot.market,
+  slot:reportSnapshot.slot,
+  now:Date.parse(reportSnapshot.date+(reportSnapshot.slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00'),
+ }:null;
  const overviewData=archiveView?snapshot?.market||null:data;
  const overviewNow=archiveView?archiveNow:now;
  const openOverviewStock=(code:string,name:string)=>archiveView?setSelected({code,name,stock:overviewData?.stocks.find(s=>s.code===code),archiveDate:reviewDate}):openStock(code,name);
@@ -140,26 +145,14 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  {data?.notice&&(tab==='overview'?<details className="source-brief"><summary><Database size={14}/>{data.providerMode==='proxy'?'当前使用同花顺兼容涨停池':data.providerMode==='snapshot'?'当前使用已保存行情':'当前使用东方财富涨停池'}</summary><p>{data.notice}</p></details>:<div className="notice"><Clock size={16}/>{data.notice}</div>)}
  <div className={'freshness-bar '+(assessment.delayed?'delayed':'')}><span><i className="status-dot"/>{assessment.clock.label}</span><span>指数源时点：{data?.indices[0]?.time?data.indices[0].time.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/,'$1-$2-$3 $4:$5:$6'):'待更新'}</span><span>涨停池源时点：{data?.poolTimestamp?clock(new Date(data.poolTimestamp).toISOString()):'源未提供'}</span><span>最近请求：{requestAt?clock(new Date(requestAt).toISOString()):'连接中'}</span><b>{assessment.delayed?'行情延迟，暂停适配推荐':assessment.clock.live?'按最新可用行情更新':'休市期间展示最近可用行情'}</b></div>
  </>}
- {tab==='overview'&&<HandbookWorkbench onGuide={()=>navigate('handbook')} onLive={()=>navigate('toolbox')}/>}
- {(tab==='overview'||tab==='toolbox'||archivePage)&&archiveControls}
+ {(tab==='toolbox'||archivePage)&&archiveControls}
  {archivePage&&(snapshot?.market?(tab==='plan'
   ?<ArchivedPlan data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>
   :<ArchivedArticle key={reviewDate+slot} data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>):missingArchive)}
- {tab==='overview'&&(archiveView&&!overviewData?missingArchive:<>
-  <OverviewSummary data={overviewData} now={overviewNow} records={comparisonRecords} onSeals={()=>{setOverviewTab('seals');document.getElementById('seal-warning')?.scrollIntoView();}} onTactics={()=>{if(!archiveView){navigate('tactics');return;}const panel=document.querySelector<HTMLDetailsElement>('#archived-tactics');if(panel){panel.open=true;panel.scrollIntoView();}}} onPlan={()=>navigate('plan')}/>
-
-  <div className="overview-switch button-row" aria-label="高标与封单视图">
-   <button className="secondary-btn" aria-pressed={overviewTab==='stocks'} onClick={()=>setOverviewTab('stocks')}>高标与关注</button>
-   <button className="secondary-btn" aria-pressed={overviewTab==='seals'} onClick={()=>setOverviewTab('seals')}>午盘与尾盘封单</button>
-   <a id="seal-warning" className="overview-anchor" aria-hidden="true"/>
-  </div>
-  {overviewTab==='stocks'?<ClosingWatchPanel data={overviewData} now={overviewNow} records={comparisonRecords} period={archiveView?slot:undefined} onStock={openOverviewStock}/>
-   :<ClosingWarningPanel data={overviewData} now={overviewNow} records={comparisonRecords} shared={sealState.shared} sharedError={sealState.error} archiveView={archiveView} period={archiveView?slot:undefined} onStock={openOverviewStock}/>}
-  <details className="panel overview-fold"><summary>周期拐点、主线切换与个股角色</summary><MarketMethodPanel data={overviewData} now={overviewNow} records={comparisonRecords} onStock={openOverviewStock}/></details>
-  <details className="panel overview-fold" id="archived-tactics"><summary>三合一扫描与战法依据</summary><TacticsPanel data={overviewData} now={overviewNow} expanded onStock={openOverviewStock}/></details>
-  <details className="panel overview-fold"><summary>情绪六维评分与辅助信号</summary><SentimentPanel data={overviewData} now={overviewNow}/><AuxiliaryPanel data={overviewData} now={overviewNow}/></details>
-  <details className="panel overview-fold"><summary>去噪主线详细排行</summary><MainlinePanel data={overviewData} now={overviewNow} onStock={openOverviewStock}/></details>
- </>)}
+ {tab==='overview'&&<>
+  <MarketResults data={overviewData} now={overviewNow} records={comparisonRecords} archivePeriod={archiveView?slot:undefined} report={overviewReport} onStock={openOverviewStock} controls={archiveControls}/>
+  <details className="panel overview-fold"><summary>完整手册与原版判定工具</summary><HandbookWorkbench onGuide={()=>navigate('handbook')} onLive={()=>navigate('toolbox')}/></details>
+ </>}
  {tab==='handbook'&&<MethodHandbook onToolbox={()=>navigate('toolbox')}/>}
  {tab==='toolbox'&&(archiveView&&!overviewData?missingArchive:<JudgmentToolbox key={archiveView?reviewDate+slot:'live'} data={overviewData} now={overviewNow} records={comparisonRecords} onManual={()=>navigate('handbook')} onStock={openOverviewStock}/>)}
  {tab==='tactics'&&<TacticsPanel data={data} now={now} expanded onStock={openStock}/>}
