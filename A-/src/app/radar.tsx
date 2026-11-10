@@ -150,7 +150,7 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
   ?<ArchivedPlan data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>
   :<ArchivedArticle key={reviewDate+slot} data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>):missingArchive)}
  {tab==='overview'&&<>
-  <MarketResults data={overviewData} now={overviewNow} records={comparisonRecords} archivePeriod={archiveView?slot:undefined} report={overviewReport} onStock={openOverviewStock} controls={archiveControls}/>
+  <MarketResults data={overviewData} now={overviewNow} records={comparisonRecords} archivePeriod={archiveView?slot:undefined} report={overviewReport} onStock={openOverviewStock} controls={archiveControls} onReportSelect={(date,period)=>{sealState.setSelectedDate(date);setReviewSlot(period);}}/>
   <details className="panel overview-fold"><summary>完整手册与原版判定工具</summary><HandbookWorkbench onGuide={()=>navigate('handbook')} onLive={()=>navigate('toolbox')}/></details>
  </>}
  {tab==='handbook'&&<MethodHandbook onToolbox={()=>navigate('toolbox')}/>}

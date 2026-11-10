@@ -3,12 +3,13 @@ import {Activity,ArrowRightLeft,BookOpen,Flame,Layers,ShieldCheck,Target} from '
 import {buildClosingSignals,type SealSnapshot} from '@/lib/closing-signals';
 import {emotionStages} from '@/lib/emotion-cycle';
 import {marketMethod} from '@/lib/market-method';
+import {referenceRotation} from '@/lib/reference-research';
 import type {Market} from '@/lib/market-types';
 import {buildResearch} from '@/lib/research';
 import {assessTactics} from '@/lib/tactics';
 import {ClosingWarningPanel,ClosingWatchPanel} from './closing-panels';
-import {MarketMethodPanel} from './market-method-panel';
-import {AuxiliaryPanel,MainlinePanel,PlanPanel,SentimentPanel} from './research-panels';
+import {AuxiliaryPanel,PlanPanel,SentimentPanel} from './research-panels';
+import {RoleBoard,RotationBoard,StrategyChain,TopicBoard,TurningBoard} from './reference-panels';
 import {ArchivedArticle,ArchivedPlan} from './review-workspace';
 import {SignalLegend} from './signal-legend';
 import TacticsPanel from './tactics-panel';
@@ -34,6 +35,7 @@ type Props={
  report:Report|null;
  controls:ReactNode;
  onStock:(code:string,name:string)=>void;
+ onReportSelect:(date:string,slot:SealSnapshot['slot'])=>void;
 };
 
 const count=(n:number|null|undefined,unit:string)=>n==null?'—':n+' '+unit;
@@ -54,7 +56,7 @@ function Evidence({title,children}:{title:string;children:ReactNode}){
  return <details className="panel overview-fold result-evidence"><summary>{title}</summary>{children}</details>;
 }
 
-export function MarketResults({data,now,records,archivePeriod,report,controls,onStock}:Props){
+export function MarketResults({data,now,records,archivePeriod,report,controls,onStock,onReportSelect}:Props){
  const [section,setSection]=useState<Section>('cycle');
  const context=assessTactics(data,now);
  const method=marketMethod(data,now,records);
@@ -84,7 +86,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
    panel=<><ResultCard title="题材热点 · 去噪排名" result={lead?lead.name+' 暂列首位':'题材数据待核验'} tone={lead?'priority':'muted'}
     description={lead?'按产业归并、同题材同股去重。热度结合涨停数、最高板和连板层级。':'等待有效涨停名单及题材归类。'}
     metrics={method.currentLines.length?method.currentLines.map((g,i)=>({label:`TOP ${i+1} · ${g.name}`,value:count(g.count,'只涨停'),detail:`热度 ${g.heat}/100 · 最高 ${g.highest} 板`})):[{label:'主线样本',value:'—',detail:'尚未取得有效名单'}]}/>
-    <MainlinePanel data={valid?data:null} now={now} onStock={onStock}/></>;
+    <TopicBoard data={data} method={method} onStock={onStock}/></>;
    break;
   case 'turn':
    panel=<><ResultCard title="拐点识别 · 同源对照" result={!method.baseline?'拐点待核验':method.improves?'出现修复线索':method.weakens?'出现降温线索':'指标方向未形成共振'}
@@ -95,19 +97,22 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'炸板率变化',value:delta(method.blastDelta==null?null:method.blastDelta*100,'个百分点',1),detail:'当前减基准',tone:method.blastDelta!=null&&method.blastDelta>0?'watch':'priority'},
      {label:'最高板变化',value:delta(method.heightDelta,'板'),detail:'非 ST 梯队'},
     ]}/>
-    <Evidence title="展开拐点依据与午盘、尾盘封单"><MarketMethodPanel {...modelProps} section="turn"/><ClosingWarningPanel {...modelProps} archiveView={!!archivePeriod} period={archivePeriod}/></Evidence></>;
+    <TurningBoard data={data} method={method}/>
+    <Evidence title="展开午盘、尾盘封单证据"><ClosingWarningPanel {...modelProps} archiveView={!!archivePeriod} period={archivePeriod}/></Evidence></>;
    break;
-  case 'rotation':
-   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':method.switchCandidate?'主线切换候选':method.switched?'榜首变动 · 待确认':'首位主线延续'}
+  case 'rotation': {
+   const rotation=referenceRotation(data,method,records);
+   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':rotation.confirmed?'主线切换已确认':method.switchCandidate?'主线切换候选':method.switched?'榜首变动 · 待确认':'首位主线延续'}
     tone={!lead||!old?'muted':method.switched?'watch':'priority'}
-    description="新首位至少 5 只涨停且已有连板层级，旧首位样本减少或退出时，列为切换候选。"
+    description="榜首变化先列为线索，再按旧线衰退、新线成立和终局三组选项核验。"
     metrics={[
      {label:'基准首位',value:old?.name||'—',detail:old?`${method.themeBaseline||'基准日期待核验'} · ${old.count} 只涨停`:'缺少同口径基准'},
      {label:'当前首位',value:lead?.name||'—',detail:lead?`${lead.count} 只涨停 · 最高 ${lead.highest} 板`:'当前主题待核验'},
      {label:'前三留存',value:old&&lead?method.previousLines.filter(l=>method.currentLines.some(c=>c.name===l.name)).length+' / '+method.previousLines.length:'—',detail:'按题材名匹配'},
     ]}/>
-    <MarketMethodPanel {...modelProps} section="rotation"/></>;
+    <RotationBoard rotation={rotation}/></>;
    break;
+  }
   case 'roles':
    panel=<><ResultCard title="主线 · 龙头 · 中军 · 补涨" result={lead?`重点查看 ${lead.name}`:'等待有效主线'} tone={lead?'priority':'muted'}
     description="角色卡列出同题材样本与判定依据。中军仍需核验全板块成交和持续承接。"
@@ -116,7 +121,7 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'高度龙头候选',value:lead?.stocks[0]?.name||'—',detail:lead?`${lead.highest} 板 · 题材内按板数优先`:'等待样本'},
      {label:'高标危险信号',value:valid?count(closing.riskCount,'只'):'—',detail:'当前完整池的高标警示',tone:closing.riskCount?'risk':'priority'},
     ]}/>
-    <MarketMethodPanel {...modelProps} section="roles"/>
+    <RoleBoard data={data} method={method} onStock={onStock}/>
     <Evidence title="展开高标个股、封单与下一时段观察"><ClosingWatchPanel {...modelProps} period={archivePeriod}/></Evidence></>;
    break;
   case 'plan':
@@ -128,14 +133,22 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
      {label:'严重风险',value:valid?count(r.risk.stops.length,'项'):'—',detail:r.risk.stops[0]||'按本站规则核验',tone:r.defensive?'risk':'priority'},
      {label:'炸板率',value:valid?percent(r.blast):'—',detail:'结合封板质量判断',tone:blastTone},
     ]}/>
+    <StrategyChain {...modelProps}/>
     {archivePeriod&&data?<ArchivedPlan data={data} now={now} records={records} slot={period}/>:<PlanPanel data={data} now={now} period={period==='noon'?'下午':'下一交易日'}/>}
     <Evidence title="展开三大战法与三合一扫描"><TacticsPanel data={data} now={now} expanded onStock={onStock}/></Evidence></>;
    break;
   case 'report': {
    const review=report?buildResearch(report.market,assessTactics(report.market,report.now)):null;
+   const archives=[...new Map(records.filter(s=>s.origin==='cloud'&&s.market).map(s=>[s.date+s.slot,s])).values()]
+    .sort((a,b)=>b.date.localeCompare(a.date)||Number(b.slot==='late')-Number(a.slot==='late')).slice(0,8);
    panel=<><ResultCard title="复盘报告 · 先看结论" result={review?.phase||'暂无该时段的复盘归档'} tone={!review||review.blocked?'muted':review.defensive?'risk':review.caution?'watch':'priority'}
     description={report?`${report.market.tradeDate} · ${report.slot==='noon'?'午盘':'收盘'}归档 · 支持复制全文和下载 HTML`:'选择有归档的日期或时段后查看。'}
     metrics={review?commonMetrics(review,!review.blocked):[{label:'归档状态',value:'—',detail:'等待有效快照'}]}/>
+    <section className="panel reference-panel"><h3>近期复盘档案</h3><p>按日期和时段打开已归档报告。</p>
+     <div className="reference-archive">{archives.map(s=><button className="secondary-btn" key={s.date+s.slot} onClick={()=>onReportSelect(s.date,s.slot)}
+      aria-pressed={report?.market.tradeDate===s.date&&report.slot===s.slot}>{s.date} · {s.slot==='noon'?'午盘':'收盘'}</button>)}</div>
+     {!archives.length&&<p>暂无已归档报告。</p>}
+    </section>
     {report&&<ArchivedArticle key={report.market.tradeDate+report.slot} data={report.market} now={report.now} records={records.filter(s=>s.origin==='cloud')} slot={report.slot}/>}</>;
    break;
   }
