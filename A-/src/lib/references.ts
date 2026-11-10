@@ -13,8 +13,8 @@ export const references = [
     title: "情绪周期实时决策终端",
     url: "https://a9f3c7e21b84d5605.app.workbuddy.host/?sharecode=34CRJ52WWX",
     strengths: ["阶段结论展示命中条件与置信度", "涨停、人气、行业资金交叉验证主线", "历史轨迹联看情绪温度与主线切换"],
-    adopted: "可解释的情绪结论、主线交叉验证与历史复盘思路。",
-    status: "已核对网页、app.js 与概念映射；上游数据可用性单独判断。",
+    adopted: "拐点对照、主线切换、个股角色与可搜索的判定手册，提供完整原文入口。",
+    status: "已核对终端和手册章节。动态判断使用曜石的行情快照与现有规则。",
   },
   {
     id: 2,

@@ -90,6 +90,24 @@
 .overview-tile{background:var(--focus-bg);border-color:var(--focus-line)}
 .overview-tile h3,.overview-tile .section-step,.overview-tile .overview-lines strong{color:var(--focus-ink)}
 .signal-legend{display:flex;flex-wrap:wrap;gap:6px}
+.method-live{margin:8px 0}
+.method-live h3,.handbook-intro h2{display:flex;align-items:center;gap:6px}
+.method-live p,.method-live small,.handbook-chapter dd{color:var(--secondary);line-height:1.7}
+.method-live .method-roles{grid-column:1/-1}
+.method-roles dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0}
+.method-roles dl>div{padding:10px;border:1px solid var(--line);border-radius:10px}
+.method-roles dt,.handbook-chapter dt{font-weight:650}
+.method-roles dd,.handbook-chapter dd{margin:5px 0 0}
+.method-roles dd button{margin-right:7px}
+.handbook-actions,.handbook-index{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:0 20px 15px}
+.handbook-actions label{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--soft);padding:8px 11px;border-radius:8px;flex:1 1 240px}
+.handbook-actions input{min-width:0;flex:1;background:none;border:0;color:var(--text)}
+.handbook-index a{border:1px solid var(--priority-line);border-radius:8px;padding:6px 8px;color:var(--priority-ink);background:var(--priority-bg)}
+.handbook-chapter{padding:16px 20px;margin:12px 0;scroll-margin-top:80px}
+.handbook-chapter h2{font-size:18px;margin:0 0 9px}
+.handbook-chapter dl{margin:0}
+.handbook-chapter dl>div{padding:9px 0;border-top:1px solid var(--line)}
+@media(max-width:720px){.method-roles dl{grid-template-columns:1fr}}
 .overview-tile h3{font-size:16px;margin:1px 0 0}
 .overview-tile .section-step,.review-toolbar label,.review-article h2{display:flex;align-items:center;gap:6px}
 .overview-tile .text-btn{margin-top:auto;text-align:left}

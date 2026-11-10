@@ -3,12 +3,26 @@ import {createDeviceKeyStore,FUYAO_DEVICE_KEY} from '../src/lib/fuyao-key-store.
 import {cloudSnapshot,collectionSlot,mergeSealArchive,parseSealArchive,closingMarket} from '../src/lib/seal-archive.ts';
 import {readSharedSeals,createSharedSealReader} from '../src/lib/shared-seals.ts';
 import {nextOutlook} from '../src/lib/next-outlook.ts';
+import {marketMethod} from '../src/lib/market-method.ts';
 const at=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const key='sk-fuyao-test_key_only_1234567890';
 const empty={version:1,generatedAt:'',records:[],runs:[]};
 const stock=x=>({code:'000001',name:'测试',boards:5,seal:1e8,amount:1e9,maxSeal:1e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:30',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){return {fetchedAt:new Date(at(t)).toISOString(),tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTotal:1,poolTimestamp:null,stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:1})),themes:[],sectors:[],hot:[],sources:[],lhb:[],lhbDate:null,stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};};
+test('method compares an earlier same-source cohort and distinguishes a candidate rotation from a missing baseline',()=>{
+ const morning=market('11:30',{stats:{up:1,down:0,opened:3,sealRate:.25}});
+ const noon=cloudSnapshot(morning,'noon',at('11:30'));
+ assert.ok(noon);
+ const stocks=Array.from({length:5},(_,i)=>stock({code:String(i+1).padStart(6,'0'),themes:['机器人'],boards:i===0?2:1}));
+ const close=market('15:01',{stocks,poolTotal:5,stats:{up:5,down:0,opened:1,sealRate:5/6}});
+ const result=marketMethod(close,at('16:00'),[noon]);
+ assert.equal(result.baseline,noon);
+ assert.equal(result.improves,true);
+ assert.equal(result.switchCandidate,true);
+ assert.equal(marketMethod(close,at('16:00'),[{...noon,source:'FUYAO'}]).baseline,null);
+ assert.equal(marketMethod({...close,cached:true},at('16:00'),[noon]).switchCandidate,false);
+});
 test('device key survives a new store instance and can be explicitly removed',()=>{const storage=memory();createDeviceKeyStore(storage).save(key);assert.equal(createDeviceKeyStore(storage).read(),key);assert.equal(storage.getItem(FUYAO_DEVICE_KEY),key);createDeviceKeyStore(storage).clear();assert.equal(createDeviceKeyStore(storage).read(),null);});
 test('malformed keys are neither accepted nor restored; denied storage has a clear failure',()=>{const s=memory();assert.throws(()=>createDeviceKeyStore(s).save('bad'));s.setItem(FUYAO_DEVICE_KEY,'invalid');assert.equal(createDeviceKeyStore(s).read(),null);const denied=createDeviceKeyStore({getItem(){throw Error();},setItem(){throw Error();},removeItem(){throw Error();}});assert.equal(denied.read(),null);assert.throws(()=>denied.save(key),/禁止保存/);});
 test('background captures complete same-day source cohorts without any browser state',()=>{const noon=cloudSnapshot(market(),'noon',at('11:30'));assert.equal(noon.origin,'cloud');assert.equal(noon.market.stocks.length,1);assert.equal(cloudSnapshot(market('15:01'),'late',at('15:01')).slot,'late');assert.equal(cloudSnapshot(market('15:01'),'noon',at('15:01')),null);});

@@ -3,6 +3,7 @@ import type {Market} from './market-types.ts';
 import {nextOutlook} from './next-outlook.ts';
 import {buildResearch} from './research.ts';
 import {assessTactics} from './tactics.ts';
+import {marketMethod} from './market-method.ts';
 
 const percent=(n:number|null)=>n==null?'待核验':(n*100).toFixed(1)+'%';
 const price=(n:number|null|undefined)=>n==null?'待核验':n.toFixed(2);
@@ -13,6 +14,13 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
  const r=buildResearch(data,tactics);
  const closing=buildClosingSignals(data,records,now);
  const outlook=nextOutlook(data,records,now);
+ const method=marketMethod(data,now,records);
+ const turning=method.baseline
+  ?`情绪对照 · ${method.baseline.date} ${method.baseline.slot==='noon'?'午盘':'收盘'} · ${method.improves?'修复线索':method.weakens?'降温线索':'方向未形成共振'}`
+  :'情绪拐点待核验 · 尚缺同源基准';
+ const rotation=method.previousLines.length&&method.currentLines.length
+  ?`首位主线 · ${method.previousLines[0].name} → ${method.currentLines[0].name} · ${method.switchCandidate?'切换候选':method.switched?'排名变化待验证':'首位延续'}`
+  :'主线切换待核验 · 尚缺同口径基准';
  const ladder=new Map<number,number>();
  for(const s of data.stocks.filter(s=>!s.isST))ladder.set(s.boards,(ladder.get(s.boards)??0)+1);
  const dimensions=r.dimensions.filter(d=>d.value!=null).sort((a,b)=>b.value!-a.value!);
@@ -33,6 +41,8 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
   {title:'高标与关注线索',lines:closing.rows.slice(0,8).map(({stock:s,ratio,comparison,signals})=>`${s.name} ${s.code} · ${s.boards}板 · 开板 ${s.openTimes??'待核验'} · ${s.themes.slice(0,2).join(' / ')||'题材待补齐'} · 封成比 ${ratio?.toFixed(3)??'待核验'} · ${signals.map(t=>t.label).join('、')} · ${comparison} · 快照日低点 ${price(s.low)}`)},
   {title:`${next}复盘计划`,lines:[...(slot==='late'?[outlook.title,outlook.base]:[]),...r.checks.map(c=>`${c.label} · ${c.detail} · ${c.passed==null?'待核验':c.passed?'已满足':'未满足'}`),`重新验证 · ${next}核对主线留存、梯队承接、封单和开板；条件齐备后再核验个股`,'失效条件 · 封板率低于 50% 或四指数均值不高于 −2% 等严重风险触发时，暂停战法评估','风控 · 快照日低点可作结构核验参考；实际退出条件与风险预算由使用者确认']},
  ];
+ sections[0].lines.push(turning);
+ sections[4].lines.push(rotation);
  const title=`${date} 曜石市场复盘 · ${label}版`;
  const meta=`${sealSource(data)||'行情快照'} · ${poolTime}`;
  return {title,meta,sections,disclaimer:'仅供行情研究参考，不构成投资建议。'};
