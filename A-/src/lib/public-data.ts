@@ -2,6 +2,7 @@ import type {Market,History,Quote,Source,Stock} from './market-types';
 import {mapEMPool,num,parseTencent,shDate,symbol} from './market-core.ts';
 import {tencentHistory} from './history-normalize.ts';
 import {loadMinuteHistory} from './minute-history.ts';
+import {poolObservation} from './public-pool-evidence.ts';
 
 export type Transport=(url:string,options?:{kind?:'json'|'quotes'|'jsonp';method?:string;body?:string})=>Promise<any>;
 const INDEX_CODES=['sh000001','sz399001','sz399006','sh000300'];
@@ -80,6 +81,7 @@ export function createPublicDataClient(transport:Transport){
    {id:'tdx',name:'通达信',status:'missing',message:'支持本机导入 .blk / .txt / .csv 自选，未配置实时授权接口',date:null,url:'https://www.tdx.com.cn/'},
   ];
   const value:Market={themeBasis:'industry',providerMode:'public',fetchedAt:new Date().toISOString(),servedAt:new Date().toISOString(),tradeDate:poolDate,poolDate,poolTimestamp:null,poolTotal:upCount,stocks:enriched,indices,stats:{up:upCount,down:downCount,opened,sealRate,sealRateDerived:true,exact:[...boards].map(([board,count])=>({board,count}))},sectors:val(3)||[],themes:[...themes.values()].sort((a,b)=>b.count-a.count).slice(0,18),lhb:l?.rows||snapshot?.lhb||[],lhbDate:l?.date||snapshot?.lhbDate||null,hot,sources,keyConfigured:false};
+  value.decisionPools=poolObservation(poolDate,up,broken,down);
   cache={time:Date.now(),value};return value;
  }
  async function history(code:string,mode='day'):Promise<History>{

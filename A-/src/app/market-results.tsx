@@ -76,10 +76,9 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
  const lead=method.currentLines[0];
  const reportLead=section==='report'&&report?marketMethod(report.market,report.now,records).currentLines[0]:null;
  const proof=useDecisionProof(section==='report'?report?.market??null:valid&&['cycle','turn','rotation','plan'].includes(section)?data:null,
-  section==='report'||section==='plan'?((reportLead??lead)?.stocks.slice(0,2).map(s=>s.code)??[]):[],
+  ['report','plan','turn','rotation'].includes(section)?((reportLead??lead)?.stocks.slice(0,2).map(s=>s.code)??[]):[],
   section==='rotation'||section==='plan'?lead?.name:reportLead?.name,records);
  const prior=valid&&data?priorPerformance(data,proof):null;
- const old=method.previousLines[0];
  const closing=buildClosingSignals(valid?data:null,records,now);
  const period=archivePeriod??(context.clock.phase==='lunch'?'noon':'late');
  const modelProps={data,now,records,onStock};
@@ -120,13 +119,16 @@ export function MarketResults({data,now,records,archivePeriod,report,controls,on
    break;
   case 'rotation': {
    const rotation=referenceRotation(data,method,records,proof);
-   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':rotation.confirmed?'主线切换已确认':method.switched?'旧主线延续 · 新方向待核验':'首位主线延续'}
-    tone={!lead||!old?'muted':method.switched?'watch':'priority'}
+   const {old,oldDate}=rotation;
+   const changed=old&&lead&&old.name!==lead.name;
+   const baseline=method.priorClose?.mainlines.lines.slice(0,3)??method.previousLines;
+   panel=<><ResultCard title="主线切换 · 新旧首位" result={!lead||!old?'主线对照待核验':rotation.confirmed?'主线切换已确认':changed?'旧主线延续 · 新方向待核验':'首位主线延续'}
+    tone={!lead||!old?'muted':changed?'watch':'priority'}
     description="榜首变化先列为线索，再按旧线衰退、新线成立和终局三组选项核验。"
     metrics={[
-     {label:'基准首位',value:old?.name||'—',detail:old?`${method.themeBaseline||'基准日期待核验'} · ${old.count} 只涨停`:'缺少同口径基准'},
+     {label:'基准首位',value:old?.name||'—',detail:old?`${oldDate||'基准日期待核验'} · ${old.count} 只涨停`:'缺少同口径基准'},
      {label:'当前首位',value:lead?.name||'—',detail:lead?`${lead.count} 只涨停 · 最高 ${lead.highest} 板`:'当前主题待核验'},
-     {label:'前三留存',value:old&&lead?method.previousLines.filter(l=>method.currentLines.some(c=>c.name===l.name)).length+' / '+method.previousLines.length:'—',detail:'按题材名匹配'},
+     {label:'前三留存',value:old&&lead?baseline.filter(l=>method.currentLines.some(c=>c.name===l.name)).length+' / '+baseline.length:'—',detail:'按题材名匹配'},
     ]}/>
     <RotationBoard rotation={rotation}/></>;
    break;

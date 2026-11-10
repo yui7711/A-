@@ -5,6 +5,8 @@ import {cloudSnapshot,collectionSlot,mergeSealArchive,parseSealArchive} from '..
 import {mergeBackupStockFields} from '../src/lib/live-enrichment.ts';
 import {createResearchEvidenceLoader} from '../src/lib/research-evidence.ts';
 import {verifiedHistoryPool} from '../src/lib/public-research.ts';
+import {asOf,sameMoment,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
+import {symbol} from '../src/lib/market-core.ts';
 const file=new URL('../public/data/seal-snapshots.json',import.meta.url),key=process.env.FUYAO_API_KEY||'';
 let archive=await readFile(file,'utf8').then(JSON.parse).then(parseSealArchive).catch(()=>({version:1,generatedAt:'',records:[],runs:[]}));
 // Scheduled runners start early, then wait for the target. Delayed starts use actual time and never relabel a close as noon.
@@ -33,6 +35,21 @@ if(slot===window){
   const evidence=createResearchEvidenceLoader({json:transport,fy:async()=>{throw Error('使用公开历史数据');},historicalPool:async d=>verifiedHistoryPool(d,Array.isArray(history?.pools)?history.pools:[])});
   const research=await evidence(date,slot==='noon'?'1130':'1500').catch(()=>null);
   if(research)for(const record of records)record.market.research=research;
+  const emRecord=records.find(record=>record.source==='东方财富');
+  for(const record of records){
+   if(emRecord&&Math.abs(asOf(emRecord.market)-asOf(record.market))<=180000)record.market.decisionPools=emRecord.market.decisionPools;
+   record.market=withPreviousSnapshot(record.market,archive.records);
+  }
+  const ids=[...new Set(records.flatMap(record=>record.market.research?.previousPool?.stocks.map(s=>symbol(s.code))||[]))];
+  const jobs=[];
+  for(let i=0;i<ids.length;i+=40)jobs.push(client.quotes(ids.slice(i,i+40)).catch(()=>[]));
+  const quotes=(await Promise.all(jobs)).flat();
+  for(const record of records){
+   const previous=record.market.research?.previousPool;
+   if(!previous?.complete)continue;
+   const accepted=new Set(previous.stocks.map(s=>symbol(s.code)));
+   record.market.decisionFeedback={previousDate:previous.date,quotes:quotes.filter(q=>accepted.has(q.code)&&sameMoment(q,date,asOf(record.market)))};
+  }
  }
 }
 const available=[...archive.records.filter(saved=>saved.date===date&&saved.slot===slot),...records];

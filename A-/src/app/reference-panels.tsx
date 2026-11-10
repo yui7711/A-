@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import type {Market} from '@/lib/market-types';
-import {handbookTurnCandidate,handbookTurning,referenceRotation,themeRoles,type Evidence} from '@/lib/reference-research';
+import {handbookThemeScore,handbookTurnCandidate,handbookTurning,referenceRotation,themeRoles,type Evidence} from '@/lib/reference-research';
 import type {marketMethod} from '@/lib/market-method';
 import type {SealSnapshot} from '@/lib/closing-signals';
 import {buildClosingSignals} from '@/lib/closing-signals';
@@ -105,14 +105,7 @@ export function RoleBoard({data,method,onStock,records}:Base&{onStock:(code:stri
  const industry=data?.sources.find(s=>s.id==='eastmoney'&&s.date===data.tradeDate&&s.status==='ok');
  const fund=industry?data?.sectors.find(s=>s.name===line.name):null;
  const ladder=levels.includes(1)&&levels.includes(2)&&levels.some(n=>n>=3&&n<line.highest)&&line.highest>=5&&levels.every((n,i)=>!i||n-levels[i-1]<=2);
- const share=line.share*100;
- const samePool=data?.stats.up===method.current.poolCount&&method.current.mainlines.unclassified===0;
- const sharePoints=!samePool?null:share>35?20:share>=25?15:share>=15?10:share>=8?5:2;
- const ladderPoints=ladder?20:line.highest===1?4:line.highest<5?12:null;
- const scoreItems=[
-  ['持续性',null,25],['涨停占比',sharePoints,20],['梯队完整度',ladderPoints,20],
-  ['中军强度',verifiedMiddle?.breakout?15:null,15],['催化级别',null,10],['题材内晋级率',null,10],
- ] as const;
+ const strength=data?handbookThemeScore(data,line,records,proof):null;
  return <section className="panel reference-panel">
   <div className="reference-panel-top"><div><h3>题材内角色与交叉验证</h3><p>用技术、资金、消息、情绪四组证据检查每个题材。</p></div>
    <label>题材 <select value={line.name} onChange={e=>setTheme(e.target.value)}>{lines.map(g=><option key={g.name}>{g.name}</option>)}</select></label>
@@ -146,10 +139,10 @@ export function RoleBoard({data,method,onStock,records}:Base&{onStock:(code:stri
    {label:'情绪 · 市场风险门槛',passed:method.current.blocked?null:!method.current.defensive&&!method.current.caution,detail:method.current.phase},
   ]}/>
   <h4>手册主线强度 · 六项评分依据</h4>
-  <div className="reference-table"><table><thead><tr><th>维度</th><th>已核验分项</th><th>满分</th></tr></thead><tbody>
-   {scoreItems.map(([name,score,max])=><tr key={name}><td>{name}</td><td>{score??'待核验'}</td><td>{max}</td></tr>)}
+  <div className="reference-table"><table><thead><tr><th>维度</th><th>已核验分项</th><th>满分</th><th>依据</th></tr></thead><tbody>
+   {strength?.items.map(item=><tr key={item.label}><td>{item.label}</td><td>{item.value??'待核验'}</td><td>{item.max}</td><td>{item.detail}</td></tr>)}
   </tbody></table></div>
-  <p>六项证据齐备后按 70、50、30 分分级。当前只展示可核验分项，保留结构热度供排序。</p>
+  <p>{strength?`已核验 ${strength.verified}/6 项 · 可能分数 ${strength.lower}–${strength.upper}。`:''}手册以 70、50、30 分分级。选股以已核实的下限判断是否达到门槛。</p>
  </section>;
 }
 
@@ -174,6 +167,7 @@ export function StrategyChain({data,now,records,onStock,proof}:{
   const theme=group?.name;
   if(!group||!theme||used.has(theme)||themeRoles(group).leader?.code!==stock.code||risk.has(stock.code)||classifyRoleEvidence(stock,data!,evidence,theme).b>=3||stock.seal==null||stock.amount==null||stock.amount<=0
    ||stock.seal/stock.amount<.10||stock.openTimes==null||stock.openTimes>=3)return false;
+  if(handbookThemeScore(data!,group,records,evidence).upper<50)return false;
   used.add(theme);
   return true;
  }).slice(0,3):[];
@@ -184,9 +178,13 @@ export function StrategyChain({data,now,records,onStock,proof}:{
    <article className={'reference-check-card focus-'+(stop?'risk':context.status.color)}><h4>② 策略</h4><strong>{stop?'停止筛选':actionWindow?context.status.label:'复盘观察'}</strong><p>{stop||(!actionWindow?'尾盘、休市或分歧时仅保留观察名单。':context.status.action)}</p></article>
    <article className={'reference-check-card focus-'+(eligible&&candidates.length?'priority':'muted')}><h4>③ 手册选股</h4><strong>{candidates.length?candidates.length+' 只前排待确认':'暂无通过初筛的样本'}</strong><p>{eligible?'仅保留前三题材各一只高度前排。题材强度须达 50 分才进入准主线；证据未齐先观察。':'当前环境或数据条件未通过。'}</p></article>
   </div>
-  {candidates.map(({stock,best,score})=><div className="reference-stock-line" key={stock.code}>
-   <button className="text-btn" onClick={()=>open(onStock,stock)}>{stock.name} · {stock.boards} 板</button>
-   <strong>{best.name} · {score} 分</strong><small>按手册分层初筛；触发需核验题材联动与盘口承接。命中 3 项见顶信号、核心封单警示或承接失效时剔除。</small>
-  </div>)}
+  {candidates.map(({stock,best,score})=>{
+   const group=groups.slice(0,3).find(g=>g.stocks.some(s=>s.code===stock.code))!;
+   const strength=handbookThemeScore(data!,group,records,evidence);
+   return <div className="reference-stock-line" key={stock.code}>
+    <button className="text-btn" onClick={()=>open(onStock,stock)}>{stock.name} · {stock.boards} 板</button>
+    <strong>{best.name} · 观察分 {score}</strong><small>{group.name} · 主线强度 {strength.lower}–{strength.upper} · {strength.lower>=70?'主线分已达 70':strength.lower>=50?'准主线，仅看最高板与前排':'低于 50 分的已核实下限，等待补证'}。命中 3 项见顶信号或核心封单警示时剔除。</small>
+   </div>;
+  })}
  </section>;
 }

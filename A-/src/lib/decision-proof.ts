@@ -1,12 +1,12 @@
-import type {History,Market,Quote,Stock} from './market-types.ts';
+import type {History,Market,PoolObservation,Quote,Stock} from './market-types.ts';
 import {buildMainlines} from './research.ts';
 import {quoteEpoch,marketClock} from './tactics.ts';
 import type {Evidence} from './reference-research.ts';
 import {sealSource,type SealSnapshot} from './closing-signals.ts';
 
-export type PoolProof={limitUp:Record<string,number|null>|null;broken:string[]|null;down:string[]|null};
+export type PoolProof=PoolObservation;
 export type SectorMember={code:string;name:string;cap:number|null;amount:number;change:number|null};
-export type DecisionProof={date:string;at:number;previousDate:string|null;prior:Stock[];quotes:Quote[];pools:PoolProof;daily:Record<string,History>;sector?:{name:string;members:SectorMember[]}};
+export type DecisionProof={date:string;at:number;previousDate:string|null;prior:Stock[];priorTaxonomy?:'reason'|'industry';quotes:Quote[];pools:PoolProof;daily:Record<string,History>;minute?:Record<string,History>;sector?:{name:string;members:SectorMember[]}};
 export const emptyPools:PoolProof={limitUp:null,broken:null,down:null};
 export const asOf=(d:Market)=>d.poolTimestamp??Math.max(0,...d.indices.map(q=>quoteEpoch(q.time)||0));
 export const cnMinute=(at:number)=>Math.floor((at/60000+480)%1440);
@@ -19,15 +19,16 @@ export function withPreviousSnapshot(data:Market,records:SealSnapshot[]){
  const research=data.research;
  if(!research||research.previousPool?.complete||research.tradeDate!==data.tradeDate||!research.previousDate)return data;
  const source=sealSource(data),date=research.previousDate;
- const snapshot=records.filter(s=>s.origin==='cloud'&&s.slot==='late'&&s.source===source&&s.date===date)
-  .sort((a,b)=>b.at-a.at).find(s=>{
+ const snapshot=records.filter(s=>s.origin==='cloud'&&s.slot==='late'&&s.date===date&&(s.source===source||s.source==='东方财富'))
+  .sort((a,b)=>Number(b.source===source)-Number(a.source===source)||b.at-a.at).find(s=>{
    const m=s.market;
-   return m&&!m.cached&&m.tradeDate===date&&m.poolDate===date&&m.themeBasis===data.themeBasis
+   return m&&!m.cached&&m.tradeDate===date&&m.poolDate===date&&(s.source!==source||m.themeBasis===data.themeBasis)
     &&m.poolTotal===m.stocks.length&&m.stats.up===m.stocks.length&&new Set(m.stocks.map(x=>x.code)).size===m.stocks.length;
   });
  if(!snapshot?.market||!source)return data;
  const stocks=snapshot.market.stocks;
- return {...data,research:{...research,previousPool:{date,total:stocks.length,complete:true,stocks,source,taxonomy:data.themeBasis??(source==='FUYAO'?'reason':'industry')}}};
+ return {...data,research:{...research,previousPool:{date,total:stocks.length,complete:true,stocks,source:snapshot.source,
+  taxonomy:snapshot.market.themeBasis??(snapshot.source==='FUYAO'?'reason':'industry')}}};
 }
 
 export function closingVolumeRatio(h:History|undefined,date:string|null,at:number){
@@ -43,20 +44,46 @@ export function sameMoment(q:Quote,date:string,at:number){
   &&(cnMinute(at)>=900?cnMinute(stamp)>=900:Math.abs(stamp-at)<=180000);
 }
 
+export function archivedFeedback(data:Market){
+ const saved=data.decisionFeedback;
+ if(!saved||!Array.isArray(saved.quotes)||saved.previousDate!==data.research?.previousDate||!data.tradeDate)return [];
+ return saved.quotes.filter(q=>q&&sameMoment(q,data.tradeDate!,asOf(data)));
+}
+
+export function summarizeFeedback(stocks:Stock[],quotes:Quote[]){
+ const changes=new Map(quotes.filter(q=>finite(q.change)).map(q=>[q.code.slice(2),q.change!]));
+ const samples=stocks.flatMap(s=>changes.has(s.code)?[changes.get(s.code)!]:[]);
+ const complete=stocks.length>0&&samples.length===stocks.length;
+ return {premium:complete?avg(samples):null,largeLoss:complete?samples.filter(n=>n< -9).length:null,
+  coverage:samples.length,total:stocks.length};
+}
+
 export function priorPerformance(data:Market,proof?:DecisionProof|null){
  const p=proof?.date===data.tradeDate&&Math.abs(proof.at-asOf(data))<=180000?proof:null;
  const prior=p?.prior||[];
- const quotes=new Map((p?.quotes||[]).filter(q=>sameMoment(q,p!.date,p!.at)&&finite(q.change)).map(q=>[q.code.slice(2),q.change!]));
- const complete=prior.length>0&&prior.every(s=>quotes.has(s.code));
- const changes=complete?prior.map(s=>quotes.get(s.code)!):[];
+ const quotes=(p?.quotes||[]).filter(q=>sameMoment(q,p!.date,p!.at));
+ const feedback=summarizeFeedback(prior,quotes);
  const today=new Map(data.stocks.map(s=>[s.code,s.boards]));
  const priorLadder=prior.filter(s=>s.boards>=2),first=prior.filter(s=>s.boards===1);
  const aligned=!data.cached&&data.tradeDate===data.poolDate&&data.poolTotal===data.stocks.length
+  &&(!p?.priorTaxonomy||p.priorTaxonomy===(data.themeBasis??(sealSource(data)==='FUYAO'?'reason':'industry')))
   &&data.stats.up===priorUniverse(data,prior)&&today.size===data.stocks.length;
  const ratio=(group:Stock[],fn:(s:Stock)=>boolean)=>aligned&&group.length?group.filter(fn).length/group.length:null;
- return {premium:changes.length?avg(changes):null,largeLoss:changes.length?changes.filter(n=>n< -9).length:null,
+ return {...feedback,
   promotion:ratio(priorLadder,s=>today.get(s.code)===s.boards+1),firstPromotion:ratio(first,s=>today.get(s.code)===2),
-  coverage:prior.filter(s=>quotes.has(s.code)).length,total:prior.length};
+ };
+}
+
+export function sessionMinuteEvidence(history:History|undefined,date:string|null,at:number){
+ if(!history||history.date!==date)return null;
+ const cutoff=Math.min(cnMinute(at),900);
+ const points=history.points.map(p=>({...p,minute:Number(p.time.slice(0,2))*60+Number(p.time.slice(3,5))}))
+  .filter(p=>p.minute>=570&&p.minute<=cutoff&&(p.minute<=690||p.minute>=780));
+ const first=points[0],last=points.at(-1);
+ if(!first||!last||first.minute>571||last.minute<cutoff-1)return null;
+ const breached=points.some(p=>p.average!=null&&p.price<p.average-.005);
+ const complete=points.length>=Math.min(121,cutoff-569)+Math.max(0,cutoff-779)-2&&points.every(p=>p.average!=null);
+ return {holdsAverage:breached?false:complete?true:null,source:history.source};
 }
 
 export function middleEvidence(data:Market,proof:DecisionProof|null|undefined,theme:string){
@@ -102,21 +129,29 @@ export function classifyRoleEvidence(stock:Stock,data:Market,proof?:DecisionProo
  const prev5=before.slice(-5);
  const firstBelow=bar&&prev5.length===5?bar.price<avg([...prev5.slice(1).map(b=>b.price),bar.price])&&prev5[4].price>=avg(prev5.map(x=>x.price)):null;
  const volumeWhy=volumeRatio==null?'需要当日收盘与此前五根同源有效日线':`${h?.source} · 当日量/前五日均量 ${volumeRatio.toFixed(2)} 倍`;
+ const highest=Math.max(0,...data.stocks.map(s=>s.boards));
+ const height=full?stock.boards===group!.highest:data.poolTotal===data.stocks.length&&stock.boards===highest?true:null;
+ const earliest=first&&allKnown(s=>!!time(s))?peers.every(s=>time(s)!>=first):null;
+ const maxSeal=finite(stock.seal)&&allKnown(s=>finite(s.seal))?peers.every(s=>s.seal!<=stock.seal!):null;
+ const tags=[height?'空间辨识':null,earliest&&maxSeal?'身位辨识':null,earliest?'时间辨识':null].filter(Boolean);
+ const intraday=sessionMinuteEvidence(p?.minute?.[stock.code],data.tradeDate,at);
+ const lastSeal=p?.pools.lastSeal?.[stock.code];
+ const sealedLots=finite(stock.seal)&&finite(stock.price)&&stock.price>0?stock.seal/stock.price/100:null;
  const good=[
-  evidence('板块或市场高度最高',full?stock.boards===group!.highest:stock.boards===Math.max(...data.stocks.map(s=>s.boards))&&data.poolTotal===data.stocks.length?true:null,group?'同题材涨停梯队':'候选题材归属待核验'),
-  evidence('板块内首封最早',first&&allKnown(s=>!!time(s))?peers.every(s=>time(s)!>=first):null,'同题材首封时点；需要全组时点'),
-  evidence('板块内封单最大',finite(stock.seal)&&allKnown(s=>finite(s.seal))?peers.every(s=>s.seal!<=stock.seal!):null,'同题材当前封单金额；需要全组金额'),
+  evidence('板块或市场高度最高',height,group?'同题材涨停梯队':'候选题材归属待核验'),
+  evidence('板块内首封最早',earliest,'同题材首封时点；需要全组时点'),
+  evidence('板块内封单最大',maxSeal,'同题材当前封单金额；需要全组金额'),
   evidence('首封后至少三只同题材样本跟进',first&&allKnown(s=>!!time(s))?peers.filter(s=>s.code!==stock.code&&time(s)!>first).length>=3:null,'按首封时序核对，不推断因果'),
   evidence('题材纯正',null,'涨停原因或行业标签不足以证明业务纯度'),
   evidence('达到三板',known(stock.boards,n=>n>=3),'涨停池连板数'),
   evidence('换手率 15%–35%',known(stock.turnover,n=>n>=15&&n<=35),'涨停池或同日个股报价'),
-  evidence('分时未跌破均价线',null,'需要逐分钟价格及同刻均价'),
+  evidence('分时未跌破均价线',intraday?.holdsAverage??null,intraday?`${intraday.source} · 用累计成交额÷累计成交股数还原分时均价`:'缺同日、同一时段的完整分时与累计成交额'),
   evidence('有持续催化',null,'需要带时点的公告或产业事件及业务对应'),
   evidence('有中军配合',middle?.breakout??null,middle?`${middle.candidate.name} · 行业成交额前列 · 核对多头均线及放量上涨`:'需要全板块成交、体量和趋势确认'),
   evidence('下方有梯队补位',full?peers.some(s=>s.boards<stock.boards&&s.code!==stock.code):null,'同题材有更低板位涨停样本'),
   evidence('龙虎榜资金结构健康',null,'当前榜单只提供净额，缺席位结构'),
   evidence('流通市值 30–150 亿',known(cap,n=>n>=30e8&&n<=150e8),'东方财富同日涨停池流通市值'),
-  evidence('有市场辨识度',null,'尚无可核验的统一识别条件'),
+  evidence('有市场辨识度',tags.length>0?true:null,tags.length?tags.join('、')+' · 按手册任一类命中':'缺可验证的空间、身位、时间或其他辨识标签'),
   evidence('分歧后转一致',null,'开板后封住仅能验证回封，缺次日转一致证据'),
   evidence('分时无异常操纵特征',null,'日线和公开盘口无法判断'),
   evidence('进入当日人气榜',data.sources.some(s=>s.id==='hot'&&s.date===data.tradeDate&&s.status==='ok')?data.hot.some(s=>s.code===stock.code):null,'同日可见人气榜样本'),
@@ -129,11 +164,13 @@ export function classifyRoleEvidence(stock:Stock,data:Market,proof?:DecisionProo
   evidence('龙虎榜拉萨接盘或主力净卖',null,'需要同日席位和资金结构，普通净额不能替代'),
   evidence('题材补涨接力消失',null,'需要上一交易日已验证补涨名单与当日状态'),
   evidence('同身位候选卡位',null,'同板位并列不等于卡位，需盘口先后和承接'),
-  evidence('题材中位股批量跌停',p?.pools.down&&group&&p.previousDate&&p.prior.length?(
-   buildMainlines(p.prior).lines.find(g=>g.name===group.name)?.stocks.filter(s=>s.boards>=3&&s.boards<=5&&p.pools.down!.includes(s.code)).length??0
-  )>=3?true:null:null,'东方财富跌停池与上一交易日中位梯队；仅核实命中'),
+  evidence('题材中位股批量跌停',p?.pools.down&&group&&p.previousDate&&p.priorTaxonomy===data.themeBasis?(()=>{
+   const previous=buildMainlines(p.prior).lines.find(g=>g.name===group.name);
+   return previous?previous.stocks.filter(s=>s.boards>=3&&s.boards<=5&&p.pools.down!.includes(s.code)).length>=3:null;
+  })():null,'东方财富跌停池与上一交易日同口径中位梯队'),
   evidence('中军大阴破位',middle?.trend===true?middle.breakdown:null,'中军候选须先有趋势证据，再核对跌超 5% 与跌破十日线'),
-  evidence('尾盘勉强封板，封单不足一万手',null,'当前记录是封单金额，缺尾盘封单手数和最终封板时点'),
+  evidence('尾盘勉强封板，封单不足一万手',close&&lastSeal!=null&&sealedLots!=null?lastSeal>=870&&sealedLots<10000:null,
+   lastSeal!=null&&sealedLots!=null?`东方财富末封 ${Math.floor(lastSeal/60)}:${String(lastSeal%60).padStart(2,'0')} · 以封单金额及涨停价折算 ${Math.round(sealedLots)} 手`:'缺东方财富最终封板时点、封单金额或涨停价'),
   evidence('出现天地板',null,'需要涨跌停价及先涨停后跌停的时序'),
   evidence('竞价高开后直线下杀',null,'需要竞价与开盘逐分钟序列'),
  ];
@@ -141,7 +178,7 @@ export function classifyRoleEvidence(stock:Stock,data:Market,proof?:DecisionProo
  const gaps=(list:Evidence[])=>list.filter(x=>x.passed==null).length;
  const g=hit(good),b=hit(bad),gu=gaps(good),bu=gaps(bad);
  return {good,bad,g,b,gu,bu,
-  leader:g>=12?'已达龙头成色门槛':g+gu<8?'成色未达到候选门槛':g>=8?'强候选，龙头成色待确认':'龙头成色待核验',
+  leader:g>=12?'龙头 · 成色已确认':g+gu<8?'成色未达到候选门槛':g>=8?'强候选，龙头成色待确认':'龙头成色待核验',
   top:b>=5?'见顶 · 重度警示':b>=3?'见顶 · 中度预警':b>0?'见顶 · 轻度预警':bu?'见顶证据待核验':'本轮未命中见顶信号',
  };
 }

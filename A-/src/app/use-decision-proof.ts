@@ -8,7 +8,7 @@ export function useDecisionProof(market:Market|null,codes:string[]=[],industry='
  const data=market?withPreviousSnapshot(market,records):null;
  const [result,setResult]=useState<{key:string;proof:DecisionProof}|null>(null);
  const key=data?.tradeDate&&!data.cached?[
-  data.tradeDate,Math.floor(asOf(data)/60000),data.research?.previousPool?.date,data.research?.previousPool?.total,industry,...codes,
+  data.tradeDate,data.themeBasis,data.stocks[0]?.source,Math.floor(asOf(data)/60000),data.research?.previousPool?.date,data.research?.previousPool?.total,data.decisionFeedback?.quotes.length,industry,...codes,
  ].join('/'):'';
  useEffect(()=>{
   if(!key||!data)return;

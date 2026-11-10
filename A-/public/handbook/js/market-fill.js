@@ -72,6 +72,9 @@
           return auto(v>=15&&v<=35?1:v>=10&&v<=45?0:-1,'候选股当日换手率 '+v+'%');
         }
         if (id==='dv_2'&&stock&&data?.volumeCode===stock.code&&data.volumeRatio>=1.5) return auto(data.volumeRatio>3?-1:data.volumeRatio>2.5?0:1,'当日成交量 ÷ 前五日均量 '+data.volumeRatio.toFixed(2)+' 倍');
+        if (id==='dv_4'&&stock&&data?.role?.code===stock.code&&data.role.good[7]?.passed===true) return auto(1,data.role.good[7].detail);
+        if (id==='dv_5'&&stock&&data?.role?.code===stock.code&&data.role.bad[9]?.passed===true) return auto(0,data.role.bad[9].detail);
+        if (id==='dv_8'&&stock&&data?.role?.code===stock.code&&data.role.bad[7]?.passed===true) return auto(-1,data.role.bad[7].detail);
         return absent('缺原选项对应的分钟盘口、历史分歧或次日行情');
       case 'dragon': {
         const role=data?.role?.code===stock?.code?data?.role:null;

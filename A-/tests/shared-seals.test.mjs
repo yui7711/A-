@@ -6,13 +6,39 @@ import {nextOutlook} from '../src/lib/next-outlook.ts';
 import {marketMethod} from '../src/lib/market-method.ts';
 import {handbookTurning,referenceRotation} from '../src/lib/reference-research.ts';
 import {handbookMarketData,latestHandbookMarket} from '../src/lib/handbook-market-data.ts';
-import {classifyRoleEvidence,emptyPools,priorPerformance,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
+import {archivedFeedback,classifyRoleEvidence,emptyPools,priorPerformance,sessionMinuteEvidence,withPreviousSnapshot} from '../src/lib/decision-proof.ts';
+import {poolObservation} from '../src/lib/public-pool-evidence.ts';
+import {tencentMinuteHistory} from '../src/lib/minute-history.ts';
 const at=t=>Date.parse('2026-11-06T'+t+':00+08:00');
 const key='sk-fuyao-test_key_only_1234567890';
 const empty={version:1,generatedAt:'',records:[],runs:[]};
 const stock=x=>({code:'000001',name:'测试',boards:5,seal:1e8,amount:1e9,maxSeal:1e8,openTimes:0,turnover:10,quoteDate:'20261106113000',time:'09:30',source:'东方财富 · 涨停池',isST:false,themes:['半导体'],score:80,price:10,change:10,...x});
 function market(t='11:30',x={}){return {fetchedAt:new Date(at(t)).toISOString(),tradeDate:'2026-11-06',poolDate:'2026-11-06',poolTotal:1,poolTimestamp:null,stocks:[stock()],indices:['sh000001','sz399001','sz399006','sh000300'].map(code=>({code,time:'20261106'+t.replace(':','')+'00',price:100,change:1})),themes:[],sectors:[],hot:[],sources:[],lhb:[],lhbDate:null,stats:{up:1,down:0,opened:0,sealRate:1},...x};}
 const memory=()=>{const values=new Map();return {getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};};
+test('pool evidence distinguishes zero, truncated and wrong-date pools',()=>{
+ const date='2026-11-06',qdate=20261106;
+ const pools=poolObservation(date,{qdate,tc:1,pool:[{c:'000001',ltsz:30e8,lbt:145300}]},
+  {qdate,tc:2,pool:[{c:'000002'}]},{qdate,tc:0,pool:null});
+ assert.deepEqual(pools,{limitUp:{'000001':30e8},lastSeal:{'000001':893},broken:null,down:[]});
+ assert.equal(poolObservation(date,null,null,{qdate:20261105,tc:0}).down,null);
+});
+test('minute evidence uses Tencent cumulative amount and never leaks a later bar into a selected cutoff',()=>{
+ const h=tencentMinuteHistory('sz000001',{data:{sz000001:{data:{date:'20261106',data:[
+  '0930 10.00 100 100000', '0931 10.02 200 200200', '0932 9.80 300 298200',
+ ]}}}});
+ assert.equal(h.points[1].average,10.01);
+ assert.equal(sessionMinuteEvidence(h,'2026-11-06',at('09:31')).holdsAverage,true);
+ assert.equal(sessionMinuteEvidence(h,'2026-11-06',at('09:32')).holdsAverage,false);
+ assert.equal(sessionMinuteEvidence(h,'2026-11-05',at('09:32')),null);
+ assert.equal(sessionMinuteEvidence(h,'2026-11-06',at('11:30')),null);
+});
+test('persisted feedback stays pinned to its archived session',()=>{
+ const date='2026-11-05';
+ const quotes=['20261106113000','20261106150000','20261109150000'].map(time=>({code:'sz000001',time,change:2}));
+ const d=market('11:30',{research:{previousDate:date},decisionFeedback:{previousDate:date,quotes}});
+ assert.deepEqual(archivedFeedback(d).map(q=>q.time),['20261106113000']);
+ assert.equal(archivedFeedback({...d,research:{previousDate:'2026-11-04'}}).length,0);
+});
 test('same-session prior feedback never treats missing or afternoon quotes as a noon result',()=>{
  const a=stock({code:'000001',boards:2}),b=stock({code:'000002',boards:1});
  const d=market('11:30',{stocks:[stock({code:'000001',boards:3}),stock({code:'000002',boards:2})],

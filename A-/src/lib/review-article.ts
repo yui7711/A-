@@ -20,8 +20,9 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
  const turning=method.baseline
   ?`情绪对照 · ${method.baseline.date} ${method.baseline.slot==='noon'?'午盘':'收盘'} · ${method.improves?'修复线索':method.weakens?'降温线索':'方向未形成共振'}`
   :'情绪拐点待核验 · 尚缺同源基准';
- const rotation=method.previousLines.length&&method.currentLines.length
-  ?`首位主线 · ${method.previousLines[0].name} → ${method.currentLines[0].name} · ${method.switchCandidate?'切换候选':method.switched?'排名变化待验证':'首位延续'}`
+ const rotationEvidence=referenceRotation(data,method,records,proof);
+ const rotation=rotationEvidence.old&&method.currentLines.length
+  ?`首位主线 · ${rotationEvidence.old.name} → ${method.currentLines[0].name} · ${rotationEvidence.confirmed?'切换已确认':rotationEvidence.old.name!==method.currentLines[0].name?'旧主线延续，新方向待验证':'首位延续'}`
   :'主线切换待核验 · 尚缺同口径基准';
  const ladder=new Map<number,number>();
  for(const s of data.stocks.filter(s=>!s.isST))ladder.set(s.boards,(ladder.get(s.boards)??0)+1);
@@ -50,7 +51,6 @@ export function buildReviewArticle(data:Market,records:SealSnapshot[],now:number
   sections[1].lines.push(`昨日涨停溢价 ${prior.premium==null?'待核验':prior.premium.toFixed(2)+'%'} · 大面股 ${prior.largeLoss??'待核验'} · 同刻报价 ${prior.coverage}/${prior.total} 只 · 首板晋级 ${percent(prior.firstPromotion)}`);
   const flags=handbookTurning(data,method,proof).map(t=>({name:t.name,yes:t.signals.filter(s=>s.passed===true).length,known:t.signals.filter(s=>s.passed!=null).length,total:t.signals.length})).filter(t=>t.yes>=2);
   sections[2].lines.push(...(flags.length?flags.map(t=>`${t.name} · 命中 ${t.yes} · 已核验 ${t.known}/${t.total} · 待后续确认`):['八类拐点中暂无两项以上同类信号命中']));
-  const rotationEvidence=referenceRotation(data,method,records,proof);
   if(rotationEvidence.confirmed)sections[4].lines.push('主线切换 · 已通过旧线、新线与终局三道门槛');
   if(rotationEvidence.dates.length>1){
    sections[4].lines.push(`题材趋势 · ${rotationEvidence.trendSource} · ${rotationEvidence.dates.join(' / ')}`);
