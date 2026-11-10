@@ -90,8 +90,15 @@
 .overview-tile{background:var(--focus-bg);border-color:var(--focus-line)}
 .overview-tile h3,.overview-tile .section-step,.overview-tile .overview-lines strong{color:var(--focus-ink)}
 .signal-legend{display:flex;flex-wrap:wrap;gap:6px}
-.method-shortcuts{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 15px;margin-bottom:13px}
-.method-shortcuts small{display:block;color:var(--muted);margin-top:4px}
+.handbook-workbench{margin:12px 0 17px;padding:16px 18px}
+.workbench-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.workbench-head h2{font-size:clamp(18px,3vw,23px);margin:4px 0}
+.workbench-head p,.workbench-tools small{color:var(--muted);margin:4px 0;line-height:1.55}
+.workbench-tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(132px,100%),1fr));gap:8px;margin-top:12px}
+.workbench-tools a{display:grid;grid-template-columns:18px 1fr;align-items:center;gap:4px;padding:9px 10px;background:var(--priority-bg);color:var(--priority-ink);border:1px solid var(--priority-line);border-radius:10px}
+.workbench-tools a:hover{border-color:var(--priority-ink)}
+.workbench-tools small{grid-column:1/-1;font-size:11px;margin:0}
+.workbench-secondary{margin-top:9px}
 .judgment-toolbox h2{display:flex;align-items:center;gap:7px}
 .tool-body{padding:0 20px 20px}
 .tool-tabs,.tool-result{margin-bottom:13px}

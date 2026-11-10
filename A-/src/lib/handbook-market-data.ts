@@ -1,42 +1,23 @@
-import type {Market,Quote} from './market-types.ts';
+import type {SealSnapshot} from './closing-signals.ts';
 import {buildMainlines} from './research.ts';
-import {sealSource} from './closing-signals.ts';
-import {assessTactics,quoteEpoch} from './tactics.ts';
+import {assessTactics} from './tactics.ts';
 
-const number=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n);
 const percent=(part:number,total:number)=>total>0?part/total*100:null;
 
-export function handbookMarketData(data:Market,now:number,previousQuotes:Quote[]=[]){
- const assessment=assessTactics(data,now);
- const valid=!data.cached&&!assessment.dataIssue;
- const pool=valid?data.stocks:[];
- const date=data.tradeDate||'';
- const research=data.research;
- const prior=research?.previousPool;
- const verifiedPrior=valid&&research?.tradeDate===date&&!!prior?.date&&prior.date===research.previousDate
-  &&prior.date<date&&prior.complete&&prior.total===prior.stocks.length
-  &&new Set(prior.stocks.map(s=>s.code)).size===prior.total&&prior.stocks.every(s=>/^\d{6}$/.test(s.code));
- const previous=verifiedPrior?prior!.stocks:[];
- const quoteMap=new Map(previousQuotes.filter(q=>{
-  const at=quoteEpoch(q.time);
-  return number(q.change)&&at!=null&&q.time.slice(0,8)===date.replaceAll('-','')&&at<=now+60000
-   &&(!assessment.clock.live||now-at<=180000);
- }).map(q=>[q.code.slice(2),q.change!]));
- const changes=previous.length&&previous.every(s=>quoteMap.has(s.code))?previous.map(s=>quoteMap.get(s.code)!):null;
- const up=valid?data.stats.up:null;
- const opened=valid?data.stats.opened:null;
- const full=valid&&up===pool.length;
- const highest=full?Math.max(0,...pool.map(s=>s.boards)):null;
- const priorLadder=previous.filter(s=>s.boards>=2);
- const boardByCode=new Map(pool.map(s=>[s.code,s.boards]));
+export function handbookMarketData(snapshot:SealSnapshot){
+ const data=snapshot.market;
+ if(!data||snapshot.origin!=='cloud'||data.cached||data.tradeDate!==snapshot.date)return null;
+ const now=Date.parse(snapshot.date+(snapshot.slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00');
+ if(assessTactics(data,now).dataIssue)return null;
+ const pool=data.stocks;
+ const {up,opened}=data.stats;
+ if(up==null||opened==null)return null;
+ const full=up===pool.length;
  const fields={
-  prem:changes?changes.reduce((sum,v)=>sum+v,0)/changes.length:null,
   zt:up,
-  high:highest,
+  high:full?Math.max(0,...pool.map(s=>s.boards)):null,
   lb:full?pool.filter(s=>s.boards>=2).length:null,
-  zbl:up!=null&&opened!=null?percent(opened,up+opened):null,
-  jjl:full&&priorLadder.length?percent(priorLadder.filter(s=>(boardByCode.get(s.code)??0)>s.boards).length,priorLadder.length):null,
-  damian:changes?changes.filter(v=>v< -9).length:null,
+  zbl:percent(opened,up+opened),
  };
  // The original ratio uses the entire source pool, including ST when it belongs to that universe.
  const themes=full?buildMainlines(pool.map(s=>s.isST?{...s,isST:false}:s)).lines.map(g=>({
@@ -45,12 +26,25 @@ export function handbookMarketData(data:Market,now:number,previousQuotes:Quote[]
   onlyFirst:g.highest===1,
  })): [];
  return {
-  date,valid,source:data.stocks.length?sealSource(data)||'行情源':data.providerMode==='public'?'东方财富':'行情源',
-  time:data.poolTimestamp??assessment.newest??Date.parse(data.fetchedAt),
-  timeBasis:data.poolTimestamp!=null?'涨停池时点':assessment.newest!=null?'指数时点':'取数时点',
-  issue:valid?'':assessment.dataIssue||'行情快照待验证',
-  fields,themes,previousDate:verifiedPrior?prior!.date:null,
-  previousCodes:previous.map(s=>s.code),
+  date:snapshot.date,valid:true,source:snapshot.source,
+  time:snapshot.at,
+  timeBasis:(snapshot.slot==='noon'?'午盘':'收盘')+(snapshot.basis==='source'?'源时点':'采集时点'),
+  fields,themes,
   stocks:pool.filter(s=>!s.isST).map(({code,name,boards,turnover})=>({code,name,boards,turnover})),
  };
+}
+
+export function latestHandbookMarket(records:SealSnapshot[],today:string){
+ const candidates=records.filter(s=>s.date<=today).flatMap(s=>{
+  const data=handbookMarketData(s);
+  return data?[{data,slot:s.slot}]:[];
+ });
+ const completeness=(data:NonNullable<ReturnType<typeof handbookMarketData>>)=>Object.values(data.fields).filter(v=>v!=null).length;
+ return candidates.sort((a,b)=>
+  b.data.date.localeCompare(a.data.date)||
+  Number(b.slot==='late')-Number(a.slot==='late')||
+  completeness(b.data)-completeness(a.data)||
+  Number(b.data.source==='FUYAO')-Number(a.data.source==='FUYAO')||
+  b.data.time-a.data.time
+ )[0]?.data??null;
 }

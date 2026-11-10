@@ -409,6 +409,8 @@
     var body = document.getElementById('drawerBody');
     var t = TABS.filter(function (x) { return x.id === id; })[0];
     RENDERERS[id](body);
+    // Keep the original calculators disabled until the snapshot form has cleared the example values.
+    document.getElementById('btnRun').disabled = true;
     document.dispatchEvent(new CustomEvent('obsidian:handbook-tool', { detail: id }));
   }
 

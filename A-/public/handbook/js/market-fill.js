@@ -4,12 +4,10 @@
   let bridge, tool, market, fields = [], picker, status, missing, sourceInfo, pickerItems;
   const manual = new Map();
   const selected = new Map();
-  const maxAge = 45000;
-  let receivedAt = 0;
-  let connection = '正在连接曜石行情…';
+  let connection = '正在读取曜石共享快照…';
   const time = value => Number.isFinite(value)
     ? new Date(value).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '时点待核验';
-  const current = () => market?.valid && Date.now() - receivedAt <= maxAge ? market : null;
+  const current = () => market?.valid ? market : null;
   const rank = (value, limits) => value == null ? null : limits.filter(limit => value >= limit).length;
   const typed = value => value == null ? '' : String(value);
   const auto = (value, detail = '已核验行情') => ({ value, detail });
@@ -43,10 +41,8 @@
         if (key === 'vol') return absent('需要当日全市场成交额与过去五日同口径均量');
         if (key === 'upr') return absent('需要全市场上涨家数与总家数');
         if (key === 'dir') return absent('需要前三日同一温度模型的结果');
-        if (key === 'prem' || key === 'damian') {
-          return auto(values[key], values[key] == null?'需要上一交易日完整涨停池及所有样本的当日报价':'上一交易日涨停池与当日报价');
-        }
-        if (key === 'jjl') return auto(values.jjl, values.jjl == null?'需要两日完整名单及上一交易日连板样本':'按上一交易日二板及以上样本逐股核对晋级');
+        if (key === 'prem' || key === 'damian') return absent('快照没有昨日涨停股的完整当日报价');
+        if (key === 'jjl') return absent('快照没有原版口径的连板晋级率');
         return auto(values[key], values[key] == null?'需要完整且同口径的当日池与统计':'当日涨停池或同日统计');
       }
       case 'mainline':
@@ -68,8 +64,7 @@
       case 'locate':
         if (id === 'lc_high') return auto(rank(values.high,[3,4,6,8]),'市场最高连板');
         if (id === 'lc_zt') return auto(values.zt==null?null:rank(values.zt,[25,40,60,86]),'当日涨停家数');
-        if (id === 'lc_prem') return auto(values.prem==null?null:values.prem>3?4:rank(values.prem,[-3,0,1.5]),'上一交易日涨停股当日报价');
-        if (id === 'lc_damian') return auto(rank(values.damian,[2,4,7,11]),'上一交易日涨停股当日报价');
+        if (id === 'lc_prem' || id === 'lc_damian') return absent('快照没有昨日涨停股的完整当日报价');
         return absent('请按原选项核验龙头或板块状态');
       default: return absent('待核验');
     }
@@ -121,8 +116,8 @@
       apply(field,value);
       if (before!==read(field)) clearResult();
       const known = value!=null&&value!=='';
-      badge.textContent = !known?'待手动补充':isManual?'手动已填':'自动填充';
-      badge.title = isManual?'保留手动值，行情刷新时不覆盖':provided.detail;
+      badge.textContent = !known?'需手动填写':isManual?'手动已填':'快照预填';
+      badge.title = isManual?'刷新快照时保留手动值':known&&data?data.date+' '+data.source+' '+data.timeBasis+' '+time(data.time)+' · '+provided.detail:provided.detail;
       badge.setAttribute('aria-label',badge.textContent+'，'+badge.title);
       badge.dataset.state = !known?'missing':isManual?'manual':'auto';
       field.dataset.missing = known?'false':'true';
@@ -130,7 +125,7 @@
       else if (isManual) user++;
       else filled++;
     }
-    sourceInfo.textContent = data ? data.date+' · '+data.source+' · '+data.timeBasis+' '+time(data.time) : connection;
+    sourceInfo.textContent = data ? data.date+' · '+data.source+' · '+data.timeBasis+' '+time(data.time)+(connection?' · '+connection:'') : connection;
     status.textContent = '自动 '+filled+' 项 · 手动 '+user+' 项 · 待补 '+pending+' 项';
     if (!pending) missing.textContent = '';
   }
@@ -167,7 +162,7 @@
       });
       actions.append(picker);
     }
-    button('刷新行情',()=>request(true));
+    button('更新快照',()=>request(true));
     button('重置手动值',()=>{manual.delete(tool);clearResult();sync();});
     const formFields = [...body.querySelectorAll('input[id], select[id]')];
     fields = formFields.map(field=>{
@@ -191,7 +186,8 @@
       clearResult();
       sync();
     });
-    body.querySelector('#btnRun').addEventListener('click',event=>{
+    const calculate=body.querySelector('#btnRun');
+    calculate.addEventListener('click',event=>{
       sync();
       const incomplete = fields.filter(({field})=>field.dataset.missing==='true'||field.type==='number'&&!Number.isFinite(field.valueAsNumber));
       if (!incomplete.length) return;
@@ -202,6 +198,7 @@
       incomplete[0].field.focus();
     },true);
     sync();
+    calculate.disabled=false;
     request();
   }
 
@@ -216,8 +213,7 @@
         clearResult();
       }
       market = next;
-      receivedAt = Date.now();
-      connection = next.issue||'等待有效行情';
+      connection = '';
     } else if (error) {
       connection = error;
     }
