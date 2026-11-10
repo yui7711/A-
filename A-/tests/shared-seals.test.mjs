@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createDeviceKeyStore,FUYAO_DEVICE_KEY} from '../src/lib/fuyao-key-store.ts';
-import {cloudSnapshot,collectionSlot,mergeSealArchive,parseSealArchive,closingMarket} from '../src/lib/seal-archive.ts';
+import {cloudSnapshot,collectionSlot,mergeSealArchive,parseSealArchive,closingMarket,settledSessionSnapshot} from '../src/lib/seal-archive.ts';
 import {readSharedSeals,createSharedSealReader} from '../src/lib/shared-seals.ts';
 import {nextOutlook} from '../src/lib/next-outlook.ts';
 import {marketMethod} from '../src/lib/market-method.ts';
@@ -137,6 +137,17 @@ test('scheduler delay during lunch preserves actual receipt time, without manufa
 test('archive writes retain noon when close arrives and never replace newer observations with older ones',()=>{const noon=cloudSnapshot(market(),'noon',at('11:30')),late=cloudSnapshot(market('15:01'),'late',at('15:01'));let a=mergeSealArchive(empty,[noon],{at:'a'});a=mergeSealArchive(a,[late],{at:'b'});a=mergeSealArchive(a,[{...late,at:at('15:00')}],{at:'c'});assert.equal(a.records.length,2);assert.equal(a.records.find(s=>s.slot==='late').at,at('15:01'));assert.equal(parseSealArchive(a).records.length,2);});
 test('new devices receive a fixed cloud close; a prior-day pair remains explicitly historical',()=>{const late=cloudSnapshot(market('15:01'),'late',at('15:01'));const v=closingMarket(null,[late],at('18:00'));assert.equal(v.cloud,true);assert.equal(v.historical,false);const tomorrow=closingMarket(null,[late],at('18:00')+86400000);assert.equal(tomorrow.historical,true);assert.equal(tomorrow.date,'2026-11-06');});
 test('live intraday cohorts remain live rather than being replaced by yesterday cloud close',()=>{const late=cloudSnapshot(market('15:01'),'late',at('15:01'));const d=market('14:00');assert.equal(closingMarket(d,[late],at('14:00')).cloud,false);});
+test('session analysis pins a known noon or close and resumes intraday updates',()=>{
+ const noon=cloudSnapshot(market('11:30'),'noon',at('11:30'));
+ const close=cloudSnapshot(market('15:01'),'late',at('15:01'));
+ const records=[noon,close];
+ assert.equal(settledSessionSnapshot(market('11:30'),records,at('12:00')),noon);
+ assert.equal(settledSessionSnapshot(market('15:01'),records,at('18:00')),close);
+ assert.equal(settledSessionSnapshot(market('13:01'),records,at('13:01')),undefined);
+ assert.equal(settledSessionSnapshot(null,[close],at('12:00')),undefined);
+ assert.equal(settledSessionSnapshot(null,[close],at('18:00')+86400000),close);
+ assert.equal(settledSessionSnapshot(null,[close],at('18:00')+3*86400000),undefined);
+});
 test('shared reader chooses newer archive, never sends keys or cross-origin cookies, and tolerates one failed host',async()=>{const seen=[];const a={...empty,generatedAt:'2026-11-06T07:00:00Z'};const result=await readSharedSeals(async(url,init)=>{seen.push({url,init});if(url.includes('github.io'))return new Response('fail',{status:503});return new Response(JSON.stringify(a));});assert.equal(result.generatedAt,a.generatedAt);assert.ok(seen.every(s=>s.init.credentials==='omit'&&!s.url.includes(key)&&!new Headers(s.init.headers).has('X-api-key')&&!new Headers(s.init.headers).has('Authorization')));});
 test('forecast suspends without effective evidence and exposes exact basis when serious risk exists',()=>{assert.match(nextOutlook(null,[],at('18:00')).title,/暂停预测/);const d=market('15:01');d.indices=d.indices.map(q=>({...q,change:-3}));const r=nextOutlook(d,[],at('18:00'));assert.match(r.title,/偏弱延续/);assert.equal(r.strength,'有限');assert.ok(r.basis.some(s=>s.includes('-3.00')));assert.match(r.worse,/失效/);});
 test('forecast offers conditional repair without inventing a calibrated win probability',()=>{const d=market('15:01',{poolTotal:80,stocks:Array.from({length:80},(_,i)=>stock({code:String(i+1).padStart(6,'0')})),stats:{up:80,down:0,opened:5,sealRate:80/85}});const r=nextOutlook(d,[],at('18:00'));assert.match(r.title,/修复观察/);assert.equal('probability' in r,false);assert.equal('winRate' in r,false);});

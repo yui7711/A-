@@ -14,6 +14,24 @@ test('Pages prefers a healthy compatible provider and rejects a date-only or old
  fy=data('fuyao',{poolTimestamp:now-181000});
  assert.equal((await read()).providerMode,'public');
 });
+test('preferred provider needs two healthy automatic rounds after fallback',async()=>{
+ let fy=data('fuyao'),publicDelay=false;
+ const read=createMultiSourceReader({now:()=>now,fuyaoFirst:true,snapshot:async()=>null,
+  live:async()=>fy||fail(),publicMarket:async()=>{
+   if(publicDelay)await new Promise(resolve=>setTimeout(resolve,10));
+   return data();
+  }});
+ assert.equal((await read()).providerMode,'proxy');
+ fy=null;
+ assert.equal((await read()).providerMode,'public');
+ fy=data('fuyao');publicDelay=true;
+ assert.equal((await read()).providerMode,'public');
+ fy=null;
+ assert.equal((await read()).providerMode,'public');
+ fy=data('fuyao');
+ assert.equal((await read()).providerMode,'public');
+ assert.equal((await read()).providerMode,'proxy');
+});
 test('public data renders without waiting for a hanging THS request, which is shared across refreshes',async()=>{
  let calls=0;const read=createMultiSourceReader({now:()=>now,live:()=>{calls++;return new Promise(()=>{})},snapshot:async()=>null,publicMarket:async()=>data()});
  for(let i=0;i<3;i++){const r=await read();assert.equal(r.providerMode,'public');assert.equal(r.sources[0].availability,'checking');}

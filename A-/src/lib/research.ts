@@ -34,7 +34,7 @@ export function buildMainlines(stocks:Stock[]){
   const seals=g.stocks.map(s=>s.seal).filter((v):v is number=>v!=null),seal=seals.length?seals.reduce((a,b)=>a+b,0):null;
   // A transparent structural heat index, not a price forecast or money-flow measure.
   const heat=Math.round(Math.min(g.stocks.length,12)/12*60+Math.min(highest,6)/6*25+Math.min(ladder,3)/3*15);
-  return {name:g.name,count:g.stocks.length,share:pool.length?g.stocks.length/pool.length:0,highest,ladder,seal,sealKnown:seals.length,heat,tags:[...g.tags],stocks:g.stocks.sort((a,b)=>b.boards-a.boards||b.score-a.score)};
+  return {name:g.name,count:g.stocks.length,share:pool.length?g.stocks.length/pool.length:0,highest,ladder,seal,sealKnown:seals.length,heat,tags:[...g.tags],stocks:g.stocks.sort((a,b)=>b.boards-a.boards||b.score-a.score||a.code.localeCompare(b.code))};
  }).sort((a,b)=>b.heat-a.heat||b.count-a.count||a.name.localeCompare(b.name,'zh-CN'));
  const classified=new Set(lines.flatMap(g=>g.stocks.map(s=>s.code)));
  return {lines,poolCount:pool.length,unclassified:pool.length-classified.size,excludedST:unique.length-pool.length,duplicates:stocks.length-unique.length,removed:[...removed]};

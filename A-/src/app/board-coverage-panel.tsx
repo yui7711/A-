@@ -28,7 +28,7 @@ export function BoardCoveragePanel({data,records,onStock,mode}:Props){
    cache.set(key,pending);
    if(cache.size>5)cache.delete(cache.keys().next().value!);
   }
-  void pending.then(coverage=>{if(active)setLoaded({key,coverage});});
+  void pending.then(coverage=>{if(active)setLoaded(previous=>({key,coverage:coverage??previous?.coverage??null}));});
   return ()=>{active=false;};
  },[key,archived]);
  const coverage=archived??loaded?.coverage??null;

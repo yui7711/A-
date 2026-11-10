@@ -82,7 +82,7 @@ export function rankCoveredBoards(data:Market,coverage:BoardCoverage|null|undefi
  const old=new Map(prior?.boardCoverage?.boards.map(b=>[b.code,b])||[]);
  const rows=coverage.boards.map(board=>{
   const members=new Set(board.members);
-  const stocks=data.stocks.filter(s=>!s.isST&&members.has(s.code)).sort((a,b)=>b.boards-a.boards||(firstSeal(a)||'99').localeCompare(firstSeal(b)||'99')||(b.seal??0)-(a.seal??0));
+  const stocks=data.stocks.filter(s=>!s.isST&&members.has(s.code)).sort((a,b)=>b.boards-a.boards||(firstSeal(a)||'99').localeCompare(firstSeal(b)||'99')||(b.seal??0)-(a.seal??0)||a.code.localeCompare(b.code));
   const leader=stocks[0];
   const previousBoard=old.get(board.code);
   const previousMembers=new Set(previousBoard?.members??board.members);
@@ -102,7 +102,7 @@ export function rankCoveredBoards(data:Market,coverage:BoardCoverage|null|undefi
   const hot=Math.min(width,12)*4+Math.min(highest,6)*4+Math.min(ladder.size,4)*4+(board.flow!=null&&board.flow>0?4:0);
   return {board,stocks,width,highest,ladder:[...ladder].sort((a,b)=>b-a),leader,middle,follower,structuralFollower,complete,before,
    sameMembership:!!previousBoard,hot,aliases:[] as string[]};
- }).filter(x=>x.width>0).sort((a,b)=>Number(b.complete)-Number(a.complete)||b.hot-a.hot||b.width-a.width||b.board.change-a.board.change);
+ }).filter(x=>x.width>0).sort((a,b)=>Number(b.complete)-Number(a.complete)||b.hot-a.hot||b.width-a.width||b.board.change-a.board.change||a.board.code.localeCompare(b.board.code));
  const ranked:typeof rows=[];
  for(const row of rows){
   const overlap=ranked.find(other=>row.complete&&other.complete&&row.width>=3&&other.width>=3&&

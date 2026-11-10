@@ -15,7 +15,7 @@ import {restoreFuyaoDirect,hasFuyaoDirect} from '@/lib/fuyao-direct';
 import FuyaoKeyDialog from './fuyao-key-dialog';
 import {useSealObservations} from './closing-panels';
 import {assessTactics} from '@/lib/tactics';
-import {selectReviewSnapshot} from '@/lib/seal-archive';
+import {selectReviewSnapshot,settledSessionSnapshot} from '@/lib/seal-archive';
 import {ArchiveControls,ArchivedPlan,ArchivedArticle} from './review-workspace';
 import {MarketResults} from './market-results';
 import {MethodHandbook} from './method-handbook';
@@ -37,19 +37,19 @@ type Selection={code:string;name:string;stock?:Stock;archiveDate?:string};
 
 function Empty({text='暂时没有数据',sub='刷新后重试，或在数据来源中检查连接状态。'}:{text?:string;sub?:string}){return <div className="empty"><Radio size={26}/><strong>{text}</strong><span>{sub}</span></div>;}
 function PriceChart({code,mode='minute',refresh=0}:{code:string;mode?:string;refresh?:number}){
- const [data,setData]=useState<History|null>(null), chartRef=useRef<History|null>(null), chartIdentity=useRef(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[hover,setHover]=useState<number|null>(null),[retry,setRetry]=useState(0);
+ const [data,setData]=useState<History|null>(null), chartRef=useRef<History|null>(null), chartIdentity=useRef(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[hover,setHover]=useState<string|null>(null),[retry,setRetry]=useState(0);
  const chartLoad=useRef<(()=>void)|null>(null);
  useEffect(()=>{const a=new AbortController();let inFlight=false;
-  if(chartIdentity.current!==code+mode){setLoading(true);setData(null);chartRef.current=null;chartIdentity.current=code+mode;}
-  const load=()=>{if(inFlight||a.signal.aborted)return;inFlight=true;setError('');
-   requestJSON<History>(`/api/history?code=${code}&mode=${mode}&fresh=1`,{signal:a.signal},{timeoutMs:15000,retries:0}).then(j=>{if(a.signal.aborted)return;setHover(null);setData(j);chartRef.current=j;}).catch(e=>{if(e.name!=='AbortError')setError('图表暂不可用，可稍后刷新。');}).finally(()=>{inFlight=false;if(!a.signal.aborted)setLoading(false);});
+  if(chartIdentity.current!==code+mode){setLoading(true);setData(null);setHover(null);chartRef.current=null;chartIdentity.current=code+mode;}
+  const load=()=>{if(inFlight||a.signal.aborted)return;inFlight=true;
+   requestJSON<History>(`/api/history?code=${code}&mode=${mode}&fresh=1`,{signal:a.signal},{timeoutMs:15000,retries:0}).then(j=>{if(a.signal.aborted)return;setError('');setData(j);chartRef.current=j;}).catch(e=>{if(e.name!=='AbortError')setError('图表暂不可用，可稍后刷新。');}).finally(()=>{inFlight=false;if(!a.signal.aborted)setLoading(false);});
   };chartLoad.current=load;load();return()=>{a.abort();chartLoad.current=null;};
  },[code,mode,retry]);
  useEffect(()=>{chartLoad.current?.();},[refresh]);
  if(loading)return <div className="chart-loading"><RefreshCw size={20} className="spin"/><span>正在连接行情…</span></div>;
  if(!data?.points.length)return <div className="chart-error"><Empty text={error||'暂无图表'} sub="已尝试真实行情源，未使用模拟价格。"/><button className="secondary-btn" onClick={()=>setRetry(n=>n+1)}><RefreshCw size={14}/>重新获取图表</button></div>;
- const p=data.points,prices=p.map(x=>x.price),low=Math.min(...prices),high=Math.max(...prices),range=high-low||high*.01||1;const y=(v:number)=>178-(v-low)/range*145;const path=p.map((v,i)=>`${i===0?'M':'L'} ${i/(p.length-1||1)*800} ${y(v.price)}`).join(' ');const selected=hover===null?null:p[hover];
- return <div className="chart"><div className="chart-meta"><span>{data.source} · {data.date||'源未返回日期'}{error||data.stale?' · 保留最近成功图表':''}</span><b>{selected?`${selected.time}  ${fmt(selected.price)}`:'移动查看价格'}</b></div><div className="chart-area" onMouseLeave={()=>setHover(null)}><svg viewBox="0 0 800 205" preserveAspectRatio="none" role="img" aria-label={`${code} ${mode==='day'?'日线收盘价':'分时价格'}图`} onMouseMove={e=>{const r=e.currentTarget.getBoundingClientRect();setHover(Math.max(0,Math.min(p.length-1,Math.round((e.clientX-r.left)/r.width*(p.length-1)))));}}><defs><linearGradient id={'fill'+code+mode} x1="0" x2="0" y1="0" y2="1"><stop stopColor="#3479ef" stopOpacity=".18"/><stop offset="1" stopColor="#3479ef" stopOpacity="0"/></linearGradient></defs>{[33,81,129,178].map(n=><line key={n} x1="0" x2="800" y1={n} y2={n} stroke="var(--line)" strokeDasharray="4 5"/>)}<path d={path+' L 800 205 L 0 205 Z'} fill={`url(#fill${code+mode})`}/><path d={path} fill="none" stroke="#3479ef" strokeWidth="2.3" vectorEffect="non-scaling-stroke"/>{hover!==null&&<g><line x1={hover/(p.length-1||1)*800} x2={hover/(p.length-1||1)*800} y1="0" y2="205" stroke="var(--muted)" strokeDasharray="3 4"/><circle cx={hover/(p.length-1||1)*800} cy={y(p[hover].price)} r="4" fill="#3479ef"/></g>}</svg><div className="chart-axis"><span>{fmt(high)}</span><span>{fmt(low)}</span></div></div><div className="chart-times"><span>{p[0].time}</span><span>{p[Math.floor(p.length/2)].time}</span><span>{p.at(-1)?.time}</span></div></div>;
+ const p=data.points,prices=p.map(x=>x.price),low=Math.min(...prices),high=Math.max(...prices),range=high-low||high*.01||1;const y=(v:number)=>178-(v-low)/range*145;const path=p.map((v,i)=>`${i===0?'M':'L'} ${i/(p.length-1||1)*800} ${y(v.price)}`).join(' ');const hoverIndex=hover===null?-1:p.findIndex(point=>point.time===hover),selected=hoverIndex<0?null:p[hoverIndex];
+ return <div className="chart"><div className="chart-meta"><span>{data.source} · {data.date||'源未返回日期'}{error||data.stale?' · 保留最近成功图表':''}</span><b>{selected?`${selected.time}  ${fmt(selected.price)}`:'移动查看价格'}</b></div><div className="chart-area" onMouseLeave={()=>setHover(null)}><svg viewBox="0 0 800 205" preserveAspectRatio="none" role="img" aria-label={`${code} ${mode==='day'?'日线收盘价':'分时价格'}图`} onMouseMove={e=>{const r=e.currentTarget.getBoundingClientRect();setHover(p[Math.max(0,Math.min(p.length-1,Math.round((e.clientX-r.left)/r.width*(p.length-1))))].time);}}><defs><linearGradient id={'fill'+code+mode} x1="0" x2="0" y1="0" y2="1"><stop stopColor="#3479ef" stopOpacity=".18"/><stop offset="1" stopColor="#3479ef" stopOpacity="0"/></linearGradient></defs>{[33,81,129,178].map(n=><line key={n} x1="0" x2="800" y1={n} y2={n} stroke="var(--line)" strokeDasharray="4 5"/>)}<path d={path+' L 800 205 L 0 205 Z'} fill={`url(#fill${code+mode})`}/><path d={path} fill="none" stroke="#3479ef" strokeWidth="2.3" vectorEffect="non-scaling-stroke"/>{selected&&<g><line x1={hoverIndex/(p.length-1||1)*800} x2={hoverIndex/(p.length-1||1)*800} y1="0" y2="205" stroke="var(--muted)" strokeDasharray="3 4"/><circle cx={hoverIndex/(p.length-1||1)*800} cy={y(selected.price)} r="4" fill="#3479ef"/></g>}</svg><div className="chart-axis"><span>{fmt(high)}</span><span>{fmt(low)}</span></div></div><div className="chart-times"><span>{p[0].time}</span><span>{p[Math.floor(p.length/2)].time}</span><span>{p.at(-1)?.time}</span></div></div>;
 }
 
 export default function Radar({initialData=null,initialToday=''}:{initialData?:Market|null;initialToday?:string}){
@@ -81,16 +81,15 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  useEffect(()=>{if(ready){store('obsidian-note-'+localNow(),note);noteRef.current=true;}},[note,ready]);
  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(t);}},[toast]);
  useEffect(()=>{const f=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus();}if(e.key==='Escape'){setSelected(null);setMobile(false);}};window.addEventListener('keydown',f);return()=>window.removeEventListener('keydown',f);},[]);
- const load=useCallback(async(force=false)=>{if(inFlight.current)return;inFlight.current=true;setRequestAt(Date.now());setBusy(true);setError('');refreshDue.current=Date.now()+intervalSec*1000;try{
+ const load=useCallback(async(force=false)=>{if(inFlight.current)return;inFlight.current=true;setRequestAt(Date.now());setBusy(true);try{
   const incoming=await requestJSON<Market>('/api/market'+(force?'?fresh=1':''),{headers:keyRef.current?{'x-provider-key':keyRef.current}:{}});
   if(!incoming||!Array.isArray(incoming.stocks)||!Array.isArray(incoming.indices)||!Array.isArray(incoming.sources))throw new Error('行情响应格式异常，请稍后刷新。');
   const next=retainMarket(dataRef.current,incoming);
   if(!hasMarketData(next))throw new Error('行情源暂未返回有效数据，请稍后刷新或查看数据来源。');
-  setData(next);dataRef.current=next;store('obsidian-last-market-v2',next);setCount(Math.max(0,Math.ceil((refreshDue.current-Date.now())/1000)));
- }catch(e){setError(e instanceof Error?e.message:'网络连接异常，已保留最近可用数据。');}finally{inFlight.current=false;setBusy(false);}},[intervalSec]);
+  setData(next);setError('');dataRef.current=next;store('obsidian-last-market-v2',next);
+ }catch(e){setError(e instanceof Error?e.message:'网络连接异常，已保留最近可用数据。');}finally{refreshDue.current=Date.now()+intervalSec*1000;setCount(intervalSec);inFlight.current=false;setBusy(false);}},[intervalSec]);
  useEffect(()=>{let disposed=false;const restore=()=>{if(hasFuyaoDirect())return;void restoreFuyaoDirect().then(ok=>{if(ok&&!disposed)void load(true);});};restore();const timer=setInterval(restore,60000);return()=>{disposed=true;clearInterval(timer);};},[load]);
  useEffect(()=>{if(!ready)return;const saved=read('obsidian-last-market-v2',null);if(!hasMarketData(dataRef.current)&&hasMarketData(saved)){const snapshot={...saved,cached:true,notice:'当前为本机保存的上次成功快照，正在尝试更新。'};dataRef.current=snapshot;setData(snapshot);}void load();},[ready,load]);
- useEffect(()=>{refreshDue.current=Date.now()+intervalSec*1000;setCount(intervalSec);if(!auto||!ready)return;const tick=()=>{if(document.hidden)return;const left=Math.max(0,Math.ceil((refreshDue.current-Date.now())/1000));setCount(left);if(left===0&&!inFlight.current){refreshDue.current=Date.now()+intervalSec*1000;void load();}};const resume=()=>{if(!document.hidden)void load(true);};const t=setInterval(tick,1000);document.addEventListener('visibilitychange',resume);window.addEventListener('online',resume);return()=>{clearInterval(t);document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',resume);};},[auto,intervalSec,ready,load,tab]);
  const loadWatch=useCallback(async()=>{if(!watch.length){setQuotes([]);return;}setQuoteError('');try{const j=await requestJSON<{quotes:Quote[]}>('/api/quotes?codes='+watch.join(','));setQuotes(j.quotes);}catch{setQuoteError('自选报价连接失败，请稍后刷新。');}},[watch]);
  useEffect(()=>{if(ready)void loadWatch();},[watch,ready,loadWatch,data?.fetchedAt]);
  useEffect(()=>setPage(1),[search,minBoards,minScore,excludeST,themeFilter,sort]);
@@ -102,7 +101,7 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
   }
   setTab(id);setMobile(false);setSearch('');setThemeFilter('');setMinBoards(1);setMinScore(0);setPage(1);};
  const openStock=(code:string,name:string)=>{const s=data?.stocks.find(x=>x.code===code);setSelected({code,name,stock:s});};
- const stocks=useMemo(()=>{let rows=(data?.stocks||[]).filter(s=>(!excludeST||!s.isST)&&s.boards>=minBoards&&s.score>=minScore&&(!themeFilter||s.themes.includes(themeFilter))&&(!search||s.code.includes(search)||s.name.includes(search)||s.reason.includes(search)));rows=rows.slice().sort((a,b)=>sort==='boards'?b.boards-a.boards:sort==='seal'?(b.seal??-1)-(a.seal??-1):sort==='time'?(a.time||'99').localeCompare(b.time||'99'):b.score-a.score);return rows;},[data,excludeST,minBoards,minScore,themeFilter,search,sort]);
+ const stocks=useMemo(()=>{const rows=(data?.stocks||[]).filter(s=>(!excludeST||!s.isST)&&s.boards>=minBoards&&s.score>=minScore&&(!themeFilter||s.themes.includes(themeFilter))&&(!search||s.code.includes(search)||s.name.includes(search)||s.reason.includes(search)));return rows.sort((a,b)=>(sort==='boards'?b.boards-a.boards:sort==='seal'?(b.seal??-1)-(a.seal??-1):sort==='time'?(a.time||'99').localeCompare(b.time||'99'):b.score-a.score)||a.code.localeCompare(b.code));},[data,excludeST,minBoards,minScore,themeFilter,search,sort]);
  const pool=data?.stocks.filter(s=>!s.isST)||[],rate=data?.stats.sealRate,consecutive=pool.filter(s=>s.boards>=2).length,highest=pool.length?Math.max(...pool.map(s=>s.boards)):null;
  const mood=rate===null||rate===undefined?'等待数据':rate>=.75?'封板较稳':rate>=.55?'分歧加大':'封板偏弱';
  const parsedNow=Date.parse(data?.servedAt||data?.fetchedAt||initialToday+'T00:00:00+08:00');
@@ -112,10 +111,12 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  const today=ready?localNow():initialToday,stale=data?.tradeDate&&data.tradeDate!==today;
  const archivePage=tab==='plan'||tab==='article';
  const archiveView=(tab==='overview'||tab==='toolbox')&&!!sealState.selectedDate;
- const reviewDate=sealState.selectedDate||(archivePage?(sealRecords.filter(s=>s.origin==='cloud').map(s=>s.date).sort().at(-1)||data?.tradeDate||today):(data?.tradeDate||today));
+ const settled=ready&&!archiveView&&(tab==='overview'||tab==='toolbox')?settledSessionSnapshot(data,sealRecords,now):undefined;
+ const autoPaused=archiveView||archivePage||!!settled;
+ const reviewDate=sealState.selectedDate||settled?.date||(archivePage?(sealRecords.filter(s=>s.origin==='cloud').map(s=>s.date).sort().at(-1)||data?.tradeDate||today):(data?.tradeDate||today));
  const comparisonRecords=archiveView||archivePage?sealRecords.filter(s=>s.origin==='cloud'):sealRecords;
  const newestSlot=selectReviewSnapshot(sealRecords,reviewDate,'late')?'late':selectReviewSnapshot(sealRecords,reviewDate,'noon')?'noon':assessment.clock.phase==='lunch'?'noon':'late';
- const slot=reviewSlot||newestSlot;
+ const slot=reviewSlot||settled?.slot||newestSlot;
  const snapshot=selectReviewSnapshot(sealRecords,reviewDate,slot);
  const archiveNow=Date.parse(reviewDate+(slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00');
  const lastReportDate=sealRecords.filter(s=>s.origin==='cloud'&&s.market&&s.date<=today).map(s=>s.date).sort().at(-1);
@@ -126,9 +127,25 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
   slot:reportSnapshot.slot,
   now:Date.parse(reportSnapshot.date+(reportSnapshot.slot==='noon'?'T12:00:00':'T16:30:00')+'+08:00'),
  }:null;
- const overviewData=archiveView?snapshot?.market||null:data;
- const overviewNow=archiveView?archiveNow:now;
- const openOverviewStock=(code:string,name:string)=>archiveView?setSelected({code,name,stock:overviewData?.stocks.find(s=>s.code===code),archiveDate:reviewDate}):openStock(code,name);
+ const overviewData=archiveView?snapshot?.market||null:settled?.market??data;
+ const overviewNow=archiveView||settled?archiveNow:now;
+ const openOverviewStock=(code:string,name:string)=>archiveView||settled?setSelected({code,name,stock:overviewData?.stocks.find(s=>s.code===code),archiveDate:reviewDate}):openStock(code,name);
+ useEffect(()=>{
+  refreshDue.current=Date.now()+intervalSec*1000;
+  setCount(intervalSec);
+  if(!auto||!ready||autoPaused)return;
+  const tick=()=>{
+   if(document.hidden)return;
+   const left=Math.max(0,Math.ceil((refreshDue.current-Date.now())/1000));
+   setCount(left);
+   if(left===0&&!inFlight.current)void load();
+  };
+  const resume=()=>{if(!document.hidden)void load();};
+  const timer=setInterval(tick,1000);
+  document.addEventListener('visibilitychange',resume);
+  window.addEventListener('online',resume);
+  return ()=>{clearInterval(timer);document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',resume);};
+ },[auto,intervalSec,ready,load,autoPaused]);
  const archiveControls=<ArchiveControls records={sealRecords} shared={sealState.shared} error={sealState.error} date={sealState.selectedDate} effectiveDate={reviewDate} followArchive={archivePage} slot={slot} now={now} onDate={date=>{sealState.setSelectedDate(date);setReviewSlot(null);}} onSlot={value=>{setReviewSlot(value);if(!sealState.selectedDate)sealState.setSelectedDate(reviewDate);}}/>;
  const missingArchive=<section className="panel"><Empty text={reviewDate+' · '+(slot==='noon'?'午盘':'收盘')+'暂无有效归档'} sub="可切换日期或时段查看其他复盘。快照采集通过后会自动显示。"/></section>;
  const exportReview=()=>{const text=buildReview(data,note);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'}));a.download=`曜石复盘-${data?.tradeDate||today}.md`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);showToast('复盘已导出');};
@@ -156,8 +173,8 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
  </aside>
  {mobile&&<button className="sidebar-scrim" aria-label="收起菜单" onClick={()=>setMobile(false)}/>}
  <main className="main"><header className="topbar"><div className="breadcrumb"><button className="icon-btn mobile-menu" aria-label="打开菜单" onClick={()=>setMobile(true)}><Menu size={20}/></button><span>工作空间</span><ChevronRight size={13}/><strong>{nav.find(n=>n.id===tab)?.name|| (tab==='sources'?'数据来源':tab==='handbook'?'曜石口径速查':tab==='toolbox'?'实时行情辅助判定':'设计与参考')}</strong></div><div className="topbar-right"><label className="search-box"><Search size={16}/><input ref={searchRef} aria-label="搜索股票、代码或题材" placeholder="搜索股票、代码或题材" value={search} onChange={e=>{setSearch(e.target.value);if(!['radar','overview'].includes(tab))setTab('radar');}}/><kbd>⌘ K</kbd></label><button className="fuyao-key-entry" aria-label="填写同花顺 Key" aria-haspopup="dialog" title="填写或更新同花顺 API Key" onClick={()=>setKeyPanelOpen(true)}><KeyRound size={15}/><span>同花顺 Key</span></button><span className="v-divider"/><button className="icon-btn theme-toggle" aria-label={theme==='dark'?'切换白天模式':'切换黑夜模式'} title={theme==='dark'?'切换白天模式':'切换黑夜模式'} onClick={()=>setTheme(t=>t==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button><button className="avatar small" title="个人工作空间" onClick={()=>navigate('sources')}>曜</button></div></header>
- <div className="page-content"><div className="page-heading"><div><div className="eyebrow">A-SHARE MARKET WORKSPACE</div><h1>{titles[tab][0]}</h1><p>{titles[tab][1]}</p></div><div className="heading-actions"><div className="date-label"><span className="status-dot"/>{archiveView||archivePage?reviewDate:data?.tradeDate||today||'连接中'}<span className="pill">{archiveView||archivePage?'复盘档案':stale?'历史快照':'行情观察'}</span></div><div className="refresh-controls"><button className={'auto-button '+(auto?'on':'')} aria-pressed={auto} onClick={()=>setAuto(a=>!a)}><span className="switch"><i/></span>自动刷新{auto&&<small>{count}s</small>}</button><select className="interval-select" aria-label="自动刷新间隔" value={intervalSec} onChange={e=>setIntervalSec(Number(e.target.value))}><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option><option value="60">60 秒</option><option value="300">5 分钟</option></select><button className="refresh-btn" aria-label="手动刷新行情" disabled={busy} onClick={()=>void load(true)}><RefreshCw size={15} className={busy?'spin':''}/><span>{busy?'刷新中':'刷新'}</span></button></div></div></div>
- {!archivePage&&!archiveView&&tab!=='handbook'&&<>
+ <div className="page-content"><div className="page-heading"><div><div className="eyebrow">A-SHARE MARKET WORKSPACE</div><h1>{titles[tab][0]}</h1><p>{titles[tab][1]}</p></div><div className="heading-actions"><div className="date-label"><span className="status-dot"/>{autoPaused?reviewDate:data?.tradeDate||today||'连接中'}<span className="pill">{settled?(settled.slot==='noon'?'午盘归档':'收盘归档'):autoPaused?'复盘档案':stale?'历史快照':'行情观察'}</span></div><div className="refresh-controls"><button className={'auto-button '+(auto?'on':'')} aria-pressed={auto} onClick={()=>setAuto(a=>!a)}><span className="switch"><i/></span>自动刷新{auto&&<small>{autoPaused?'归档':count+'s'}</small>}</button><select className="interval-select" aria-label="自动刷新间隔" value={intervalSec} onChange={e=>setIntervalSec(Number(e.target.value))}><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option><option value="60">60 秒</option><option value="300">5 分钟</option></select><button className="refresh-btn" aria-label={autoPaused?"检查共享归档":"手动刷新行情"} disabled={busy} onClick={()=>autoPaused?void sealState.refresh():void load(true)}><RefreshCw size={15} className={busy?'spin':''}/><span>{busy?'刷新中':'刷新'}</span></button></div></div></div>
+ {!autoPaused&&tab!=='handbook'&&<>
  {error&&<div className="notice error" role="alert"><Activity size={16}/>{error}<button onClick={()=>void load(true)}>重试</button></div>}
  {stale&&<div className="notice"><Clock size={16}/>当前涨停池为 {data?.tradeDate} 数据，请以模块标注时间为准。</div>}
  {data?.notice&&(tab==='overview'?<details className="source-brief"><summary><Database size={14}/>{data.providerMode==='proxy'?'当前使用同花顺兼容涨停池':data.providerMode==='snapshot'?'当前使用已保存行情':'当前使用东方财富涨停池'}</summary><p>{data.notice}</p></details>:<div className="notice"><Clock size={16}/>{data.notice}</div>)}
@@ -168,7 +185,7 @@ export default function Radar({initialData=null,initialToday=''}:{initialData?:M
   ?<ArchivedPlan data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>
   :<ArchivedArticle key={reviewDate+slot} data={snapshot.market} now={archiveNow} records={comparisonRecords} slot={slot}/>):missingArchive)}
  {tab==='overview'&&<>
-  <MarketResults data={overviewData} now={overviewNow} records={comparisonRecords} archivePeriod={archiveView?slot:undefined} report={overviewReport} onStock={openOverviewStock} controls={archiveControls} onReportSelect={(date,period)=>{sealState.setSelectedDate(date);setReviewSlot(period);}}/>
+  <MarketResults data={overviewData} now={overviewNow} records={comparisonRecords} archivePeriod={archiveView||settled?slot:undefined} report={overviewReport} onStock={openOverviewStock} controls={archiveControls} onReportSelect={(date,period)=>{sealState.setSelectedDate(date);setReviewSlot(period);}}/>
   <details className="panel overview-fold"><summary>完整手册与原版判定工具</summary><HandbookWorkbench onGuide={()=>navigate('handbook')} onLive={()=>navigate('toolbox')}/></details>
  </>}
  {tab==='handbook'&&<MethodHandbook onToolbox={()=>navigate('toolbox')}/>}

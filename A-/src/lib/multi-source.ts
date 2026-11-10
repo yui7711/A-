@@ -33,10 +33,15 @@ export async function firstAvailable<T>(jobs:Array<()=>Promise<T>>,valid:(value:
 /** A pending browser request is shared across polls, so a slow standby never multiplies requests. */
 export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=>null,now=Date.now,preferLive=()=>false,fuyaoFirst=false}:Options){
  let pending:Promise<Result>|null=null,lastLive:Result|null=null,lastPublic:Result|null=null,active:Kind|null=null;
+ let healthyLiveRounds=0,activeDate:string|null=null;
  function checkLive(force:boolean){
   if(pending)return pending;
   const job=Promise.resolve().then(()=>live(force)).then(data=>({kind:'fuyao' as const,data,checkedAt:now()}),e=>({kind:'fuyao' as const,data:null,checkedAt:now(),error:connectionHint(e)}));
-  pending=job.then(result=>{lastLive=result;pending=null;return result;});return pending;
+  pending=job.then(result=>{
+   const healthy=cohortGrade(result.data,'fuyao',now())===2;
+   healthyLiveRounds=healthy?(lastLive?.data?.tradeDate===result.data?.tradeDate?healthyLiveRounds+1:1):0;
+   lastLive=result;pending=null;return result;
+  });return pending;
  }
  function standby():Source{
   const row=lastLive?.data?.sources.find(s=>s.id==='fuyao'),available=lastLive?.data&&cohortGrade(lastLive.data,'fuyao',now())===2;
@@ -60,6 +65,8 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
   const publicJob=snapshotJob.then(s=>publicMarket(force,s)).then(data=>({kind:'public' as const,data,checkedAt:now()}),e=>({kind:'public' as const,data:null,checkedAt:now(),error:connectionHint(e)})).then(result=>{lastPublic=result;return result;});
   const valid=(r:Result)=>cohortGrade(r.data,r.kind,now())===2;
   const prioritizeFuyao=preferLive()||(fuyaoFirst&&prefer==='public');
+  const activeOnDate=activeDate===marketClock(now()).date?active:null;
+  const mayReturnToPreferred=()=>force||activeOnDate!=='public'||healthyLiveRounds>=2;
   let selected:Result;
   try{selected=await firstAvailable(prefer==='auto'?[()=>liveJob,()=>publicJob]:[()=>publicJob,()=>liveJob],valid);}
   catch{
@@ -82,15 +89,16 @@ export function createMultiSourceReader({live,publicMarket,snapshot,previous=()=
     const timer=setTimeout(()=>resolve(lastLive&&now()-lastLive.checkedAt<=15000&&valid(lastLive)?lastLive:null),preferLive()?2500:850);
     void liveJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});
    });
-   if(preferred)selected=preferred;
+   if(preferred&&mayReturnToPreferred())selected=preferred;
   }
   // Keep a healthy active cohort within a bounded 500ms grace, avoiding source-count flicker.
-  if(active&&selected.kind!==active&&valid(selected)&&!prioritizeFuyao){
-   const previousJob=active==='fuyao'?liveJob:publicJob;
-   const stable=await new Promise<Result|null>(resolve=>{const timer=setTimeout(()=>resolve(null),500);void previousJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});});
+  const holdPublic=prioritizeFuyao&&activeOnDate==='public'&&!mayReturnToPreferred();
+  if(activeOnDate&&selected.kind!==activeOnDate&&valid(selected)&&(!prioritizeFuyao||holdPublic)){
+   const previousJob=activeOnDate==='fuyao'?liveJob:publicJob;
+   const stable=await new Promise<Result|null>(resolve=>{const timer=setTimeout(()=>resolve(null),holdPublic?1500:500);void previousJob.then(r=>{clearTimeout(timer);resolve(valid(r)?r:null);});});
    if(stable)selected=stable;
   }
-  if(valid(selected))active=selected.kind;
+  if(valid(selected)){active=selected.kind;activeDate=marketClock(now()).date;}
   if(selected.kind==='fuyao'){
    const publicDone=await Promise.race([publicJob,Promise.resolve(null)]);
    const backup=publicDone||(lastPublic&&now()-lastPublic.checkedAt<30000?lastPublic:null);

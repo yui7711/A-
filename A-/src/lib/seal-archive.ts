@@ -35,6 +35,16 @@ export function selectReviewSnapshot(records:SealSnapshot[],date:string,slot:Sea
  const paired=(s:SealSnapshot)=>slot==='late'&&records.some(n=>n.origin==='cloud'&&n.date===date&&n.slot==='noon'&&n.source===s.source&&n.stocks.some(x=>x.seal!=null&&x.seal>0));
  return candidates.sort((a,b)=>Number(paired(b))-Number(paired(a))||Number(b.source==='FUYAO')-Number(a.source==='FUYAO')||b.at-a.at)[0];
 }
+
+export function settledSessionSnapshot(data:Market|null,records:SealSnapshot[],now:number){
+ const clock=marketClock(now);
+ if(clock.live)return undefined;
+ if(clock.phase==='lunch')return selectReviewSnapshot(records,clock.date,'noon');
+ const weekday=new Date(now+8*3600000).getUTCDay();
+ if(clock.phase==='closed'&&weekday>=1&&weekday<=5)return selectReviewSnapshot(records,clock.date,'late');
+ const date=records.filter(s=>s.origin==='cloud'&&s.slot==='late'&&s.market&&s.date<=clock.date).map(s=>s.date).sort().at(-1);
+ return date&&(!data?.tradeDate||date>=data.tradeDate)?selectReviewSnapshot(records,date,'late'):undefined;
+}
 /** A completed cloud close is a fixed, labelled comparison, independent of which provider wins live refreshes. */
 export function closingMarket(data:Market|null,records:SealSnapshot[],now:number,selectedDate?:string){
  const clock=marketClock(now);

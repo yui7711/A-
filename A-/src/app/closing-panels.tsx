@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,ShieldAlert,Target} from 'lucide-react';
 import type {Market} from '@/lib/market-types';
 import {buildClosingSignals,recordSealSnapshot,sanitizeSnapshots,SEAL_STORAGE,type SealSnapshot,type SignalTone} from '@/lib/closing-signals';
@@ -12,11 +12,12 @@ const displayTone=(tone:SignalTone,checked:number)=>tone==='muted'&&checked===3?
 const pct=(n:number|null)=>n==null?'—':(n>=0?'+':'')+(n*100).toFixed(1)+'%';
 export function useSealObservations(data:Market|null,now:number){
  const [records,setRecords]=useState<SealSnapshot[]>([]),[ready,setReady]=useState(false),[selectedDate,setSelectedDate]=useState(''),[shared,setShared]=useState<SealArchive|null>(null),[error,setError]=useState('');
+ const refreshShared=useRef<(()=>Promise<void>)|null>(null);
  useEffect(()=>{try{setRecords(sanitizeSnapshots(JSON.parse(localStorage.getItem(SEAL_STORAGE)||'[]')));}catch{}setReady(true);},[]);
  useEffect(()=>{if(!ready)return;setRecords(old=>recordSealSnapshot(old,data,now));},[ready,data,now]);
  useEffect(()=>{if(ready)try{localStorage.setItem(SEAL_STORAGE,JSON.stringify(records));}catch{}},[ready,records]);
- useEffect(()=>{const c=new AbortController();let pending=false;const load=async()=>{if(pending||document.hidden)return;pending=true;try{const value=await readSharedSeals(fetch,c.signal);if(!c.signal.aborted){setShared(value);setError('');}}catch(e){if(!c.signal.aborted)setError(e instanceof Error?e.message:'共享快照读取失败');}finally{pending=false;}};void load();const timer=setInterval(()=>void load(),60000);const resume=()=>{if(!document.hidden)void load();};document.addEventListener('visibilitychange',resume);return()=>{c.abort();clearInterval(timer);document.removeEventListener('visibilitychange',resume);};},[]);
- return {records:[...(shared?.records||[]),...records],shared,error,selectedDate,setSelectedDate};
+ useEffect(()=>{const c=new AbortController();let pending=false;const load=async()=>{if(pending||document.hidden)return;pending=true;try{const value=await readSharedSeals(fetch,c.signal);if(!c.signal.aborted){setShared(old=>old&&old.generatedAt>=value.generatedAt?old:value);setError('');}}catch(e){if(!c.signal.aborted)setError(e instanceof Error?e.message:'共享快照读取失败');}finally{pending=false;}};refreshShared.current=load;void load();const timer=setInterval(()=>void load(),60000);const resume=()=>{if(!document.hidden)void load();};document.addEventListener('visibilitychange',resume);return()=>{refreshShared.current=null;c.abort();clearInterval(timer);document.removeEventListener('visibilitychange',resume);};},[]);
+ return {records:[...(shared?.records||[]),...records],shared,error,selectedDate,setSelectedDate,refresh:()=>refreshShared.current?.()};
 }
 
 type Props={data:Market|null;now:number;records:SealSnapshot[];shared?:SealArchive|null;sharedError?:string;archiveView?:boolean;period?:'noon'|'late';onStock:(code:string,name:string)=>void};
